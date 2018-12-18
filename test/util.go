@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/knative/pkg/test/logging"
 )
@@ -37,7 +38,7 @@ func LogResourceObject(logger *logging.BaseLogger, value ResourceObjects) {
 
 // ImagePath is a helper function to prefix image name with repo and suffix with tag
 func ImagePath(name string) string {
-	return fmt.Sprintf("%s/%s:%s", ServingFlags.DockerRepo, name, ServingFlags.Tag)
+	return fmt.Sprintf("%s:knative-serving-test-%s", ServingFlags.DockerRepo, name)
 }
 
 // ListenAndServeGracefully creates an HTTP server, listens on the defined address
@@ -46,7 +47,7 @@ func ImagePath(name string) string {
 func ListenAndServeGracefully(addr string, handler func(w http.ResponseWriter, r *http.Request)) {
 	m := http.NewServeMux()
 	m.HandleFunc("/", handler)
-	server := http.Server{Addr: addr, Handler: m}
+	server := http.Server{Addr: addr, Handler: m, IdleTimeout: 60 * time.Second}
 
 	go server.ListenAndServe()
 
