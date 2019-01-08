@@ -272,6 +272,7 @@ func (c *Reconciler) createRevision(ctx context.Context, config *v1alpha1.Config
 
 		// First, see if a build with this spec already exists.
 		buildHash := build.GetLabels()[serving.BuildHashLabelKey]
+		logger.Debugf("Listing GVRs:\n%+v", gvr)
 		ul, err := c.DynamicClientSet.Resource(gvr).Namespace(build.GetNamespace()).List(metav1.ListOptions{
 			LabelSelector: fmt.Sprintf("%s=%s", serving.BuildHashLabelKey, buildHash),
 		})
@@ -284,6 +285,7 @@ func (c *Reconciler) createRevision(ctx context.Context, config *v1alpha1.Config
 			// If one exists, then have the Revision reference it.
 			result = &ul.Items[0]
 		} else {
+			logger.Debugf("Creating build:\n%+v", build)
 			// Otherwise, create a build and reference that.
 			result, err = c.DynamicClientSet.Resource(gvr).Namespace(build.GetNamespace()).Create(build)
 			if err != nil {
