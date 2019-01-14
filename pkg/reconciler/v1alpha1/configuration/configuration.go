@@ -220,12 +220,20 @@ func (c *Reconciler) createRevision(ctx context.Context, config *v1alpha1.Config
 	if config.Spec.Build != nil {
 		// TODO(mattmoor): Determine whether we reuse the previous build.
 		build := resources.MakeBuild(config)
+		logger.Infof("===build: %+v", build)
+		logger.Infof("===gvk: %+v", build.GroupVersionKind())
 		gvr, _ := meta.UnsafeGuessKindToResource(build.GroupVersionKind())
+		logger.Infof("===gvr: %+v", gvr)
+		logger.Infof("===namespace: %+v", build.GetNamespace())
+		_, err := c.DynamicClientSet.Resource(gvr).Namespace(build.GetNamespace()).List(metav1.ListOptions{})
+		if err != nil {
+			logger.Infof("===Error: %v", err)
+		}
 		created, err := c.DynamicClientSet.Resource(gvr).Namespace(build.GetNamespace()).Create(build)
 		if err != nil {
 			return nil, err
 		}
-		logger.Infof("Created Build:\n%+v", created.GetName())
+		logger.Infof("===Created Build:\n%+v", created.GetName())
 		c.Recorder.Eventf(config, corev1.EventTypeNormal, "Created", "Created Build %q", created.GetName())
 	}
 
