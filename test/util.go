@@ -16,12 +16,14 @@ package test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/knative/pkg/signals"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // HelloVolumePath is the path to the test volume.
@@ -56,4 +58,20 @@ func ListenAndServeGracefullyWithPattern(addr string, handlers map[string]func(w
 
 	<-signals.SetupSignalHandler()
 	server.Shutdown(context.Background())
+}
+
+// RunningPods returns the number of Pods in state "Running" in the given namespace. Returns error
+// if pods cannot be listed.
+func RunningPods(clients *Clients, namespace string, podName string) (int, error) {
+	podList, err := clients.KubeClient.Kube.CoreV1().Pods(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return -1, err
+	}
+	var runningPods int
+	for _, pod := range podList.Items {
+		if strings.Contains(pod.Name, podName) && pod.Status.Phase == "Running" {
+			runningPods++
+		}
+	}
+	return runningPods, nil
 }
