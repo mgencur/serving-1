@@ -69,26 +69,6 @@ function wait_until_hostname_resolves() {
   return 1
 }
 
-# Waits until the configmap in the given namespace contains the
-# desired content.
-# Parameters: $1 - namespace
-#             $2 - configmap name
-#             $3 - desired content
-function wait_until_configmap_contains() {
-  echo -n "Waiting until configmap $1/$2 contains '$3'"
-  for _ in {1..180}; do  # timeout after 3 minutes
-    local output="$(oc -n "$1" get cm "$2" -oyaml | grep "$3")"
-    if [[ -n "${output}" ]]; then
-      echo -e "\n${output}"
-      return 0
-    fi
-    echo -n "."
-    sleep 1
-  done
-  echo -e "\n\nERROR: timeout waiting for configmap $1/$2 to contain '$3'"
-  return 1
-}
-
 # Loops until duration (car) is exceeded or command (cdr) returns non-zero
 function timeout() {
   SECONDS=0; TIMEOUT=$1; shift
@@ -134,8 +114,6 @@ function install_knative(){
   # Wait for 6 pods to appear first
   timeout 900 '[[ $(oc get pods -n $SERVING_NAMESPACE --no-headers | wc -l) -lt 6 ]]' || return 1
   wait_until_pods_running knative-serving || return 1
-
-  enable_knative_interaction_with_registry
 
   # Wait for 2 pods to appear first
   timeout 900 '[[ $(oc get pods -n istio-system --no-headers | wc -l) -lt 2 ]]' || return 1
@@ -197,18 +175,6 @@ function tag_core_images(){
   for name in $IMAGE_NAMES; do
     tag_built_image ${name} ${name}
   done
-}
-
-function enable_knative_interaction_with_registry() {
-  local configmap_name=config-service-ca
-  local cert_name=service-ca.crt
-  local mount_path=/var/run/secrets/kubernetes.io/servicecerts
-
-  oc -n $SERVING_NAMESPACE create configmap $configmap_name
-  oc -n $SERVING_NAMESPACE annotate configmap $configmap_name service.alpha.openshift.io/inject-cabundle="true"
-  wait_until_configmap_contains $SERVING_NAMESPACE $configmap_name $cert_name
-  oc -n $SERVING_NAMESPACE set volume deployment/controller --add --name=service-ca --configmap-name=$configmap_name --mount-path=$mount_path
-  oc -n $SERVING_NAMESPACE set env deployment/controller SSL_CERT_FILE=$mount_path/$cert_name
 }
 
 function create_test_resources_openshift() {
