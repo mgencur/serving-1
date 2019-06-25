@@ -27,6 +27,8 @@ import (
 
 	pkgTest "github.com/knative/pkg/test"
 	ingress "github.com/knative/pkg/test/ingress"
+	"github.com/knative/serving/pkg/apis/serving/v1alpha1"
+	serviceresourcenames "github.com/knative/serving/pkg/reconciler/service/resources/names"
 	"github.com/knative/serving/test"
 	v1a1test "github.com/knative/serving/test/v1alpha1"
 	"github.com/knative/test-infra/shared/junit"
@@ -60,12 +62,28 @@ func timeToServe(t *testing.T, img, query string, reqTimeout time.Duration) {
 	test.CleanupOnInterrupt(func() { TearDown(perfClients, names, t.Logf) })
 
 	t.Log("Creating a new Service")
-	objs, err := v1a1test.CreateRunLatestServiceReady(t, clients, &names, &v1a1test.Options{})
+	svc, err := v1a1test.CreateLatestServiceLegacy(t, clients, names, &v1a1test.Options{})
 	if err != nil {
 		t.Fatalf("Failed to create Service: %v", err)
 	}
+	names.Route = serviceresourcenames.Route(svc)
+	names.Config = serviceresourcenames.Configuration(svc)
 
-	domain := objs.Route.Status.URL.Host
+	t.Log("When the Service reports as Ready, everything should be ready.")
+	if err := v1a1test.WaitForServiceState(clients.ServingAlphaClient, names.Service, v1a1test.IsServiceReady, "ServiceIsReady"); err != nil {
+		t.Fatalf("The Service %s was not marked as Ready to serve traffic to Revision %s: %v", names.Service, names.Revision, err)
+	}
+
+	t.Log("The Service will be updated with the domain of the Route once it is created")
+	var domain string
+	err = v1a1test.WaitForServiceState(clients.ServingAlphaClient, names.Service, func(s *v1alpha1.Service) (bool, error) {
+		if s.Status.DeprecatedDomain != "" {
+			domain = s.Status.DeprecatedDomain
+			return true, nil
+		}
+		return false, nil
+	}, "ServiceUpdatedWithDomain")
+
 	endpoint, err := ingress.GetIngressEndpoint(clients.KubeClient.Kube)
 	if err != nil {
 		t.Fatalf("Cannot get service endpoint: %v", err)
