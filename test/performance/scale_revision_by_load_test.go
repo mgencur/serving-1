@@ -21,6 +21,7 @@ package performance
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,9 +119,9 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 	}
 	t.Logf("Took %v for the endpoint to start serving", time.Since(st))
 
-	// The number of scale events should be at most ~numClients/targetConcurrency,
-	// adding a big buffer to account for unexpected events
-	scaleCh := make(chan *scaleEvent, numClients/targetConcurrency*10)
+	// The number of scale events should be at most ~numClients/targetConcurrency
+	scaleEvents := make([]*scaleEvent, 0, numClients/targetConcurrency*10)
+	var scaleEventsMutex sync.Mutex
 	stopCh := make(chan struct{})
 
 	factory := informers.NewSharedInformerFactory(clients.KubeClient.Kube, 0)
@@ -137,10 +138,9 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 						newScale:  newNumAddresses,
 						timestamp: time.Now(),
 					}
-					select {
-					case scaleCh <- event:
-					default:
-					}
+					scaleEventsMutex.Lock()
+					defer scaleEventsMutex.Unlock()
+					scaleEvents = append(scaleEvents, event)
 				}
 			}
 		},
@@ -165,7 +165,6 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 	}
 
 	close(stopCh)
-	close(scaleCh)
 
 	// Save the json result for benchmarking
 	resp.SaveJSON()
@@ -177,7 +176,9 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 	tc = append(tc, CreatePerfTestCase(float32(resp.Result[0].ActualQPS), "actualQPS", t.Name()))
 	tc = append(tc, CreatePerfTestCase(float32(ErrorsPercentage(resp)), "errorsPercentage", t.Name()))
 
-	for ev := range scaleCh {
+	scaleEventsMutex.Lock()
+	defer scaleEventsMutex.Unlock()
+	for _, ev := range scaleEvents {
 		t.Logf("Scaled: %d -> %d in %v", ev.oldScale, ev.newScale, ev.timestamp.Sub(resp.Result[0].StartTime))
 		tc = append(tc, CreatePerfTestCase(float32(ev.timestamp.Sub(resp.Result[0].StartTime)/time.Second), fmt.Sprintf("scale-from-%02d-to-%02d(seconds)", ev.oldScale, ev.newScale), t.Name()))
 	}
