@@ -71,7 +71,11 @@ TIMEOUT=10m
 
 header "Running preupgrade tests"
 
-go_test_e2e -tags=preupgrade -timeout=${TIMEOUT} ./test/upgrade \
+# run the scaleToZero test first so that its wait time doesn't scale to zero services from other tests"
+go_test_e2e -tags=preupgrade -timeout=${TIMEOUT} ./test/upgrade -run ^TestRunLatestServicePreUpgradeAndScaleToZero$ \
+  --resolvabledomain=$(use_resolvable_domain) || fail_test
+
+go_test_e2e -tags=preupgrade -timeout=${TIMEOUT} ./test/upgrade -run ^TestRunLatestServicePreUpgrade$ \
   --resolvabledomain=$(use_resolvable_domain) || fail_test
 
 header "Starting prober test"
