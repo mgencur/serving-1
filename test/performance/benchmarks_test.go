@@ -25,7 +25,6 @@ import (
 	"time"
 
 	pkgTest "github.com/knative/pkg/test"
-	"github.com/knative/pkg/test/ingress"
 	"github.com/knative/serving/test"
 	v1a1test "github.com/knative/serving/test/v1alpha1"
 	"github.com/knative/test-infra/shared/junit"
@@ -70,10 +69,6 @@ func runTest(t *testing.T, img string, baseQPS float64, loadFactors []float64) {
 	}
 
 	domain := objs.Route.Status.URL.Host
-	endpoint, err := ingress.GetIngressEndpoint(clients.KubeClient.Kube)
-	if err != nil {
-		t.Fatalf("Cannot get service endpoint: %v", err)
-	}
 
 	if _, err := pkgTest.WaitForEndpointState(
 		clients.KubeClient,
@@ -85,18 +80,30 @@ func runTest(t *testing.T, img string, baseQPS float64, loadFactors []float64) {
 		t.Fatalf("Error probing domain %s: %v", domain, err)
 	}
 
+	endpoint, err := resolveEndpoint(clients.KubeClient, domain, test.ServingFlags.ResolvableDomain,
+		pkgTest.Flags.IngressEndpoint)
+	if err != nil {
+		t.Fatalf("Cannot resolve service endpoint: %v", err)
+	}
+
 	opts := loadgenerator.GeneratorOptions{
 		Duration:       duration,
 		NumThreads:     1,
 		NumConnections: 5,
 		Domain:         domain,
-		URL:            fmt.Sprintf("http://%s", *endpoint),
+		URL:            endpoint,
 		RequestTimeout: reqTimeout,
 		BaseQPS:        baseQPS,
 		LoadFactors:    loadFactors,
 		FileNamePrefix: filename(tName),
 	}
-	resp, err := opts.RunLoadTest(loadgenerator.AddHostHeader)
+
+	var flags []int
+	if !test.ServingFlags.ResolvableDomain {
+		flags = append(flags, loadgenerator.AddHostHeader)
+	}
+
+	resp, err := opts.RunLoadTest(flags...)
 	if err != nil {
 		t.Fatalf("Generating traffic via fortio failed: %v", err)
 	}

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	pkgTest "github.com/knative/pkg/test"
+	"github.com/knative/pkg/test/ingress"
 	"github.com/knative/pkg/test/logging"
 	"github.com/knative/pkg/test/zipkin"
 	"github.com/knative/serving/test"
@@ -132,4 +133,23 @@ func AddTrace(logf logging.FormatLogger, tName string, traceID string) {
 	if _, err := traceFile.WriteString(fmt.Sprintf("%s,\n", trace)); err != nil {
 		logf("Cannot write to trace file: %v", err)
 	}
+}
+
+func resolveEndpoint(kubeClientset *pkgTest.KubeClient, domain string, resolvable bool, endpointOverride string) (string, error) {
+	var endpoint string
+	if !resolvable {
+		e := &endpointOverride
+		if endpointOverride == "" {
+			var err error
+			e, err = ingress.GetIngressEndpoint(kubeClientset.Kube)
+			if err != nil {
+				return "", err
+			}
+		}
+		endpoint = *e
+	} else {
+		// If the domain is resolvable, we can use it directly when we make requests.
+		endpoint = domain
+	}
+	return endpoint, nil
 }
