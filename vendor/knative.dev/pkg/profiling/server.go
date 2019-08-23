@@ -25,16 +25,12 @@ import (
 	perrors "github.com/pkg/errors"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
+	"knative.dev/pkg/apis/networking"
 )
 
-const (
-	// profilingPort is the port where we expose profiling information if profiling is enabled
-	profilingPort = ":8008"
-
-	// profilingKey is the name of the key in config-observability config map that indicates whether profiling
-	// is enabled of disabled
-	profilingKey = "profiling.enable"
-)
+// profilingKey is the name of the key in config-observability config map that indicates whether profiling
+// is enabled of disabled
+const profilingKey = "profiling.enable"
 
 // Handler holds the main HTTP handler and a flag indicating
 // whether the handler is active
@@ -104,11 +100,16 @@ func (h *Handler) UpdateFromConfigMap(configMap *corev1.ConfigMap) {
 	}
 }
 
-// NewServer creates a new http server that exposes profiling data using the
+// NewServerWithAddress creates a new http server that exposes profiling data using the
 // HTTP handler that is passed as an argument
-func NewServer(handler http.Handler) *http.Server {
+func NewServerWithAddress(addr string, handler http.Handler) *http.Server {
 	return &http.Server{
-		Addr:    profilingPort,
+		Addr:    addr,
 		Handler: handler,
 	}
+}
+
+// NewServer creates a new http server that exposes profiling data on the default profiling port
+func NewServer(handler http.Handler) *http.Server {
+	return NewServerWithAddress(":"+strconv.Itoa(networking.ProfilingPort), handler)
 }

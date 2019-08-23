@@ -41,6 +41,7 @@ import (
 	pkglogging "knative.dev/pkg/logging"
 	"knative.dev/pkg/logging/logkey"
 	"knative.dev/pkg/metrics"
+	"knative.dev/pkg/profiling"
 	"knative.dev/pkg/signals"
 	"knative.dev/pkg/tracing"
 	tracingconfig "knative.dev/pkg/tracing/config"
@@ -123,6 +124,7 @@ type config struct {
 	QueueServingPort                  int                       `split_words:"true" required:"true"`
 	RevisionTimeoutSeconds            int                       `split_words:"true" required:"true"`
 	UserPort                          int                       `split_words:"true" required:"true"`
+	EnableProfiling                   bool                      `split_words:"true"` // optional
 	EnableVarLogCollection            bool                      `split_words:"true"` // optional
 	ServingConfiguration              string                    `split_words:"true" required:"true"`
 	ServingNamespace                  string                    `split_words:"true" required:"true"`
@@ -402,10 +404,14 @@ func main() {
 		Handler: metricsMux,
 	}
 
+	profilingHandler := profiling.NewHandler(logger, env.EnableProfiling)
+	profilingServer := profiling.NewServer(profilingHandler)
+
 	servers := map[string]*http.Server{
 		"main":    server,
 		"admin":   adminServer,
 		"metrics": metricsServer,
+		"profile": profilingServer,
 	}
 
 	errCh := make(chan error, len(servers))
@@ -455,8 +461,10 @@ func main() {
 		})
 
 		flush(logger)
-		if err := adminServer.Shutdown(context.Background()); err != nil {
-			logger.Errorw("Failed to shutdown admin-server", zap.Error(err))
+		for _, serverName := range []string{"admin", "metrics", "profile"} {
+			if err := servers[serverName].Shutdown(context.Background()); err != nil {
+				logger.Errorw("Failed to shutdown server", zap.String("server", serverName), zap.Error(err))
+			}
 		}
 	}
 }
