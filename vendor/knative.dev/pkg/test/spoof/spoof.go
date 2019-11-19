@@ -42,7 +42,7 @@ import (
 const (
 	requestInterval = 1 * time.Second
 	// RequestTimeout is the default timeout for the polling requests.
-	RequestTimeout = 5 * time.Minute
+	RequestTimeout = 10 * time.Minute
 	// Name of the temporary HTTP header that is added to http.Request to indicate that
 	// it is a SpoofClient.Poll request. This header is removed before making call to backend.
 	pollReqHeader = "X-Kn-Poll-Request-Do-Not-Trace"
