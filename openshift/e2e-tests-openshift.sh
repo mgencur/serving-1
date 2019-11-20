@@ -14,13 +14,23 @@ readonly INSECURE="${INSECURE:-"false"}"
 readonly TEST_NAMESPACE=serving-tests
 readonly TEST_NAMESPACE_ALT=serving-tests-alt
 readonly SERVING_NAMESPACE=knative-serving
-readonly SERVICEMESH_NAMESPACE=knative-serving-ingress
-export GATEWAY_NAMESPACE_OVERRIDE="$SERVICEMESH_NAMESPACE"
 readonly TARGET_IMAGE_PREFIX="$INTERNAL_REGISTRY/$SERVING_NAMESPACE/knative-serving-"
+readonly UPGRADE_SERVERLESS="${UPGRADE_SERVERLESS:-"true"}"
+readonly UPGRADE_CLUSTER="${UPGRADE_CLUSTER:-"false"}"
 
-# The OLM global namespace was moved to openshift-marketplace since v4.2
-# ref: https://jira.coreos.com/browse/OLM-1190
-readonly OLM_NAMESPACE="openshift-marketplace"
+
+if [[ ${HOSTNAME} = e2e-aws-ocp-41* ]]; then
+  # The OLM global namespace was moved to openshift-marketplace since v4.2
+  # ref: https://jira.coreos.com/browse/OLM-1190
+  readonly OLM_NAMESPACE="openshift-operator-lifecycle-manager"
+  readonly RUN_UPGRADE_TESTS=true
+  readonly INSTALL_PLAN_APPROVAL="Manual"
+else
+  readonly OLM_NAMESPACE="openshift-marketplace"
+  # Skip rolling upgrades on OCP 4.2 because of https://jira.coreos.com/browse/OLM-1299
+  readonly RUN_UPGRADE_TESTS=false
+  readonly INSTALL_PLAN_APPROVAL="Automatic"
+fi
 
 env
 
@@ -83,37 +93,91 @@ function timeout() {
   return 0
 }
 
-function install_knative(){
+function install_servicemesh(){
+  header "Installing ServiceMesh"
+
+  install_servicemesh_operator || return 1
+
+  # Deploy ServiceMesh
+  oc new-project $SERVICEMESH_NAMESPACE
+  oc apply -n $SERVICEMESH_NAMESPACE -f openshift/servicemesh/controlplane-install.yaml
+  cat <<EOF | oc apply -f -
+apiVersion: maistra.io/v1
+kind: ServiceMeshMemberRoll
+metadata:
+  name: default
+  namespace: ${SERVICEMESH_NAMESPACE}
+spec:
+  members:
+  - serving-tests
+  - serving-tests-alt
+  - ${SERVING_NAMESPACE}
+EOF
+
+  # Wait for the ingressgateway pod to appear.
+  timeout 900 '[[ $(oc get pods -n $SERVICEMESH_NAMESPACE | grep -c istio-ingressgateway) -eq 0 ]]' || return 1
+
+  wait_until_service_has_external_ip $SERVICEMESH_NAMESPACE istio-ingressgateway || fail_test "Ingress has no external IP"
+  wait_until_hostname_resolves "$(kubectl get svc -n $SERVICEMESH_NAMESPACE istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+
+  wait_until_pods_running $SERVICEMESH_NAMESPACE
+
+  header "ServiceMesh installed successfully"
+}
+
+function install_servicemesh_operator(){
+  # Install the ServiceMesh Operator
+  oc apply -f openshift/servicemesh/operator-install.yaml
+
+  # Wait for the istio-operator pod to appear
+  timeout 900 '[[ $(oc get pods -n openshift-operators | grep -c istio-operator) -eq 0 ]]' || return 1
+
+  # Wait until the Operator pod is up and running
+  wait_until_pods_running openshift-operators || return 1  
+}
+
+function install_knative_previous(){
+  export SERVICEMESH_NAMESPACE=istio-system
+  export GATEWAY_NAMESPACE_OVERRIDE="$SERVICEMESH_NAMESPACE"
+
+  # For the previous release install the whole Service Mesh (including ControlPlane)
+  install_servicemesh || return 1
+
   header "Installing Knative"
 
   oc new-project $SERVING_NAMESPACE
 
-  # Install CatalogSource in OLM namespace
-  oc apply -n $OLM_NAMESPACE -f openshift/olm/knative-serving.catalogsource.yaml
-  timeout 900 '[[ $(oc get pods -n $OLM_NAMESPACE | grep -c serverless) -eq 0 ]]' || return 1
-  wait_until_pods_running $OLM_NAMESPACE
-
+  # Get the previous CSV
+  local csv=$(grep replaces: openshift/olm/knative-serving.catalogsource.yaml | tail -n1 | awk '{ print $2 }')
   # Deploy Serverless Operator
-  deploy_serverless_operator
+  deploy_serverless_operator $csv
 
-  # Wait for the CRD to appear
-  timeout 900 '[[ $(oc get crd | grep -c knativeservings) -eq 0 ]]' || return 1
+  # Deploy KnativeServing CR
+  deploy_knativeserving
 
-  # Install Knative Serving
-  cat <<-EOF | oc apply -f -
-apiVersion: serving.knative.dev/v1alpha1
-kind: KnativeServing
-metadata:
-  name: knative-serving
-  namespace: ${SERVING_NAMESPACE}
-EOF
+  header "Knative Installed successfully"
+}
 
-  # Create imagestream for images generated in CI namespace
-  tag_core_images openshift/release/knative-serving-ci.yaml
+function install_knative_latest(){
+  export SERVICEMESH_NAMESPACE=knative-serving-ingress
+  export GATEWAY_NAMESPACE_OVERRIDE="$SERVICEMESH_NAMESPACE"
 
-  # Wait for 4 pods to appear first
-  timeout 900 '[[ $(oc get pods -n $SERVING_NAMESPACE --no-headers | wc -l) -lt 4 ]]' || return 1
-  wait_until_pods_running $SERVING_NAMESPACE || return 1
+  # OLM doesn't support dependency resolution on 4.1 yet. Install the operator manually.
+  if [[ ${HOSTNAME} = e2e-aws-ocp-41* ]]; then
+    install_servicemesh_operator || return 1
+  fi
+
+  header "Installing Knative"
+
+  oc new-project $SERVING_NAMESPACE
+
+  # Get the current/latest CSV
+  local csv=$(grep currentCSV openshift/olm/knative-serving.catalogsource.yaml | awk '{ print $2 }')
+  # Deploy Serverless Operator
+  deploy_serverless_operator $csv
+
+  # Deploy KnativeServing CR
+  deploy_knativeserving
 
   wait_until_service_has_external_ip $SERVICEMESH_NAMESPACE istio-ingressgateway || fail_test "Ingress has no external IP"
   wait_until_hostname_resolves "$(kubectl get svc -n $SERVICEMESH_NAMESPACE istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
@@ -122,8 +186,17 @@ EOF
 }
 
 function deploy_serverless_operator(){
+  local csv=$1
   local NAME="serverless-operator"
   local OPERATOR_NS=$(kubectl get og --all-namespaces | grep global-operators | awk '{print $1}')
+
+  # Create imagestream for images generated in CI namespace
+  tag_core_images openshift/release/knative-serving-ci.yaml
+
+  # Install CatalogSource in OLM namespace
+  oc apply -n $OLM_NAMESPACE -f openshift/olm/knative-serving.catalogsource.yaml
+  timeout 900 '[[ $(oc get pods -n $OLM_NAMESPACE | grep -c serverless) -eq 0 ]]' || return 1
+  wait_until_pods_running $OLM_NAMESPACE
 
   cat <<-EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1alpha1
@@ -136,7 +209,53 @@ spec:
   sourceNamespace: $OLM_NAMESPACE
   name: ${NAME}
   channel: techpreview
+  installPlanApproval: ${INSTALL_PLAN_APPROVAL}
+  startingCSV: ${csv}
 EOF
+
+  # Approve the initial installplan automatically
+  if [ $INSTALL_PLAN_APPROVAL = "Manual" ]; then
+    approve_csv $csv
+  fi
+}
+
+function deploy_knativeserving(){
+  # Wait for the CRD to appear
+  timeout 900 '[[ $(oc get crd | grep -c knativeservings) -eq 0 ]]' || return 1
+
+  # Install Knative Serving
+  cat <<-EOF | oc apply -f -
+apiVersion: serving.knative.dev/v1alpha1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: ${SERVING_NAMESPACE}
+EOF
+
+  timeout 900 '[[ $(oc get knativeserving knative-serving -n $SERVING_NAMESPACE -o=jsonpath="{.status.conditions[?(@.type==\"Ready\")].status}") != True ]]'  || return 1
+}
+
+function approve_csv()
+{
+  local csv_version=$1
+
+  # Wait for the installplan to be available
+  timeout 900 "[[ -z \$(find_install_plan $csv_version) ]]" || return 1
+
+  local install_plan=$(find_install_plan $csv_version)
+  oc get $install_plan -n openshift-operators -o yaml | sed 's/\(.*approved:\) false/\1 true/' | oc replace -f -
+
+  timeout 300 "[[ \$(oc get ClusterServiceVersion $csv_version -n openshift-operators -o jsonpath='{.status.phase}') != Succeeded ]]" || return 1
+}
+
+function find_install_plan()
+{
+  local csv=$1
+  for plan in `oc get installplan -n openshift-operators --no-headers -o name`; do 
+    [[ $(oc get $plan -n openshift-operators -o=jsonpath='{.spec.clusterServiceVersionNames}' | grep -c $csv) -eq 1 && \
+       $(oc get $plan -n openshift-operators -o=jsonpath='{.metadata.ownerReferences[?(@.name=="serverless-operator-subscription")]}') != "" ]] && echo $plan && return 0
+  done
+  echo ""
 }
 
 function tag_core_images(){
@@ -153,6 +272,8 @@ function tag_core_images(){
 
 function create_test_resources_openshift() {
   echo ">> Creating test resources for OpenShift (test/config/)"
+
+  rm test/config/100-istio-default-domain.yaml
 
   resolve_resources test/config/ tests-resolved.yaml $TARGET_IMAGE_PREFIX
 
@@ -206,6 +327,96 @@ function run_e2e_tests(){
   return $failed
 }
 
+function run_rolling_upgrade_tests() {
+    header "Running rolling upgrade tests"
+
+    local TIMEOUT_TESTS="20m"
+    failed=0
+
+    report_go_test -tags=preupgrade -timeout=${TIMEOUT_TESTS} ./test/upgrade \
+    --dockerrepo "${INTERNAL_REGISTRY}/${SERVING_NAMESPACE}" \
+    --kubeconfig $KUBECONFIG \
+    --resolvabledomain || failed=1
+
+    echo "Starting prober test"
+
+    # Make prober send requests more often compared with upstream where it is 1/second
+    sed -e 's/\(.*requestInterval =\).*/\1 200 * time.Millisecond/' -i vendor/knative.dev/pkg/test/spoof/spoof.go
+
+    rm -f /tmp/prober-signal
+    report_go_test -tags=probe -timeout=${TIMEOUT_TESTS} ./test/upgrade \
+    --dockerrepo "${INTERNAL_REGISTRY}/${SERVING_NAMESPACE}" \
+    --kubeconfig $KUBECONFIG \
+    --resolvabledomain &
+
+    # Wait for the upgrade-probe kservice to be ready before proceeding
+    timeout 900 '[[ $(oc get ksvc upgrade-probe -n $TEST_NAMESPACE -o=jsonpath="{.status.conditions[?(@.type==\"Ready\")].status}") != True ]]' || return 1
+
+    # Give routes time to be propagated
+    sleep 30
+
+    PROBER_PID=$!
+    echo "Prober PID is ${PROBER_PID}"
+
+    if [[ $UPGRADE_SERVERLESS == true ]]; then
+      serving_version=$(oc get knativeserving knative-serving -n $SERVING_NAMESPACE -o=jsonpath="{.status.version}")
+      # Get the current/latest CSV
+      upgrade_to=$(grep currentCSV openshift/olm/knative-serving.catalogsource.yaml | awk '{ print $2 }')
+      approve_csv $upgrade_to || return 1
+
+      # Wait for the error to mention ServiceMeshMemberRoll
+      timeout 900 '[[ ! ( $(oc get knativeserving knative-serving -n $SERVING_NAMESPACE -o=jsonpath="{.status.conditions[?(@.type==\"Ready\")].reason}") == Error && $(oc get knativeserving knative-serving -n $SERVING_NAMESPACE -o=jsonpath="{.status.conditions[?(@.type==\"Ready\")].message}") =~ SMMR ) ]]' || return 1
+
+      # End the prober test now before we unblock the upgrade, up until now we should have zero failed requests
+      end_prober_test ${PROBER_PID}
+
+      # Manual step from the user - clear SMMR in istio-system NS
+      oc patch smmr default -n istio-system --type='json' -p='[{"op": "remove", "path": "/spec/members"}]'
+
+      # The knativeserving CR should be updated now
+      timeout 900 '[[ ! ( $(oc get knativeserving knative-serving -n $SERVING_NAMESPACE -o=jsonpath="{.status.version}") != $serving_version && $(oc get knativeserving knative-serving -n $SERVING_NAMESPACE -o=jsonpath="{.status.conditions[?(@.type==\"Ready\")].status}") == True ) ]]' || return 1
+
+      # Tests require the correct ingress gateway which is now in a new namespace after upgrade
+      export GATEWAY_NAMESPACE_OVERRIDE=knative-serving-ingress
+    fi
+
+    # Might not work in OpenShift CI but we want it here so that we can consume this script later and re-use
+    if [[ $UPGRADE_CLUSTER == true ]]; then
+      end_prober_test ${PROBER_PID}
+
+      latest_cluster_version=$(oc adm upgrade | sed -ne '/VERSION/,$ p' | grep -v VERSION | awk '{print $1}')
+      [[ $latest_cluster_version == "" ]] && return 1
+
+      oc adm upgrade --to-latest=true
+
+      timeout 7200 '[[ $(oc get clusterversion -o=jsonpath="{.items[0].status.history[?(@.version==\"${latest_cluster_version}\")].state}") != Completed ]]' || return 1
+
+      echo "New cluster version: $(oc get clusterversion)"
+    fi
+
+    for kservice in `oc get ksvc -n $TEST_NAMESPACE --no-headers -o name`; do
+      timeout 900 '[[ $(oc get $kservice -n $TEST_NAMESPACE -o=jsonpath="{.status.conditions[?(@.type==\"Ready\")].status}") != True ]]' || return 1
+    done
+
+    # Give routes time to be propagated
+    sleep 30
+
+    echo "Running postupgrade tests"
+    report_go_test -tags=postupgrade -timeout=${TIMEOUT_TESTS} ./test/upgrade \
+    --dockerrepo "${INTERNAL_REGISTRY}/${SERVING_NAMESPACE}" \
+    --kubeconfig $KUBECONFIG \
+    --resolvabledomain || failed=1
+
+    return $failed
+}
+
+function end_prober_test(){
+  local PROBER_PID=$1
+  echo "done" > /tmp/prober-signal
+  echo "Waiting for prober test to finish..."
+  wait ${PROBER_PID}
+}
+
 function dump_openshift_olm_state(){
   echo ">>> subscriptions.operators.coreos.com:"
   oc get subscriptions.operators.coreos.com -o yaml --all-namespaces   # This is for status checking.
@@ -250,9 +461,17 @@ create_test_namespace || exit 1
 
 failed=0
 
-(( !failed )) && install_knative || failed=1
+if [ ${RUN_UPGRADE_TESTS} = true ]; then
+  (( !failed )) && install_knative_previous || failed=1
+else
+  (( !failed )) && install_knative_latest || failed=1
+fi
 
 (( !failed )) && create_test_resources_openshift || failed=1
+
+if [ ${RUN_UPGRADE_TESTS} = true ]; then
+  (( !failed )) && run_rolling_upgrade_tests || failed=1
+fi
 
 (( !failed )) && run_e2e_tests || failed=1
 
