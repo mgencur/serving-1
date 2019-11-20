@@ -18,18 +18,16 @@ readonly TARGET_IMAGE_PREFIX="$INTERNAL_REGISTRY/$SERVING_NAMESPACE/knative-serv
 readonly UPGRADE_SERVERLESS="${UPGRADE_SERVERLESS:-"true"}"
 readonly UPGRADE_CLUSTER="${UPGRADE_CLUSTER:-"false"}"
 
-
 if [[ ${HOSTNAME} = e2e-aws-ocp-41* ]]; then
   # The OLM global namespace was moved to openshift-marketplace since v4.2
   # ref: https://jira.coreos.com/browse/OLM-1190
   readonly OLM_NAMESPACE="openshift-operator-lifecycle-manager"
-  readonly RUN_UPGRADE_TESTS=true
-  readonly INSTALL_PLAN_APPROVAL="Manual"
 else
   readonly OLM_NAMESPACE="openshift-marketplace"
   # Skip rolling upgrades on OCP 4.2 because of https://jira.coreos.com/browse/OLM-1299
-  readonly RUN_UPGRADE_TESTS=false
-  readonly INSTALL_PLAN_APPROVAL="Automatic"
+  if [[ ${HOSTNAME} = e2e-aws-ocp-43* ]]; then
+    readonly RUN_UPGRADE_TESTS=true
+  fi
 fi
 
 env
@@ -198,6 +196,12 @@ function deploy_serverless_operator(){
   timeout 900 '[[ $(oc get pods -n $OLM_NAMESPACE | grep -c serverless) -eq 0 ]]' || return 1
   wait_until_pods_running $OLM_NAMESPACE
 
+  if [ $RUN_UPGRADE_TESTS = true ]; then
+    install_plan_approval="Manual"
+  else
+    install_plan_approval="Automatic"
+  fi
+
   cat <<-EOF | oc apply -f -
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
@@ -209,12 +213,12 @@ spec:
   sourceNamespace: $OLM_NAMESPACE
   name: ${NAME}
   channel: techpreview
-  installPlanApproval: ${INSTALL_PLAN_APPROVAL}
+  installPlanApproval: ${install_plan_approval}
   startingCSV: ${csv}
 EOF
 
   # Approve the initial installplan automatically
-  if [ $INSTALL_PLAN_APPROVAL = "Manual" ]; then
+  if [ $install_plan_approval = "Manual" ]; then
     approve_csv $csv
   fi
 }
