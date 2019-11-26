@@ -60,6 +60,10 @@ const (
 	targetUtilization    = 0.7
 )
 
+// Keep it a var so that we can adjust it externally via -ldflags=-X=knative\.dev/serving/test/e2e.autoscaleSleep=<value>"
+// for environments with longer round-trip times
+var autoscaleSleep = "500"
+
 type testContext struct {
 	t                 *testing.T
 	clients           *test.Clients
@@ -76,7 +80,7 @@ func getVegetaTarget(kubeClientset *kubernetes.Clientset, domain, endpointOverri
 	if resolvable {
 		return vegeta.Target{
 			Method: "GET",
-			URL:    fmt.Sprintf("http://%s?sleep=100", domain),
+			URL:    fmt.Sprintf("http://%s?sleep=%s", domain, autoscaleSleep),
 		}, nil
 	}
 
@@ -95,7 +99,7 @@ func getVegetaTarget(kubeClientset *kubernetes.Clientset, domain, endpointOverri
 	h.Set("Host", domain)
 	return vegeta.Target{
 		Method: "GET",
-		URL:    fmt.Sprintf("http://%s?sleep=100", endpoint),
+		URL:    fmt.Sprintf("http://%s?sleep=%s", endpoint, autoscaleSleep),
 		Header: h,
 	}, nil
 }
@@ -115,7 +119,7 @@ func generateTraffic(ctx *testContext, concurrency int, duration time.Duration, 
 	}
 	for i := 0; i < concurrency; i++ {
 		group.Go(func() error {
-			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s?sleep=100", ctx.domain), nil)
+			req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s?sleep=%s", ctx.domain, autoscaleSleep), nil)
 			if err != nil {
 				return fmt.Errorf("error creating HTTP request: %v", err)
 			}
