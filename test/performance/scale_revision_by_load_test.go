@@ -50,12 +50,12 @@ import (
 const (
 	qpsPerClient         = 10               // frequencies of requests per client
 	iterationDuration    = 60 * time.Second // iteration duration for a single scale
-	processingTimeMillis = 1000             // delay of each request on "server" side
-	targetValue          = 5
+	processingTimeMillis = 100              // delay of each request on "server" side
+	targetValue          = 10
 	signalFile           = "/tmp/done-signal"
 )
 
-var concurrentClients = []int{80}
+var concurrentClients = []int{40}
 
 type scaleEvent struct {
 	oldScale  int
