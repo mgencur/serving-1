@@ -50,7 +50,7 @@ import (
 const (
 	qpsPerClient         = 10               // frequencies of requests per client
 	iterationDuration    = 60 * time.Second // iteration duration for a single scale
-	processingTimeMillis = 100              // delay of each request on "server" side
+	processingTimeMillis = 1000             // delay of each request on "server" side
 	targetValue          = 10
 	signalFile           = "/tmp/done-signal"
 )
