@@ -53,7 +53,7 @@ const (
 	targetValue          = 10
 )
 
-var concurrentClients = []int{10, 20, 40, 80, 160, 320}
+var concurrentClients = []int{40}
 
 type scaleEvent struct {
 	oldScale  int
