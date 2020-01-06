@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +52,7 @@ const (
 	iterationDuration    = 60 * time.Second // iteration duration for a single scale
 	processingTimeMillis = 100              // delay of each request on "server" side
 	targetValue          = 10
+	signalFile           = "/tmp/done-signal"
 )
 
 var concurrentClients = []int{40}
@@ -178,8 +180,14 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 	t.Logf("Starting test with %d clients at %s", numClients, time.Now())
 	attackStartTime := time.Now()
 	var metrics vegeta.Metrics
-	for res := range attacker.Attack(targeter, pacer, iterationDuration, t.Name()) {
-		metrics.Add(res)
+	for {
+		for res := range attacker.Attack(targeter, pacer, iterationDuration, t.Name()) {
+			metrics.Add(res)
+		}
+		// iterate until we give a signal to stop
+		if fileExists(signalFile) {
+			break
+		}
 	}
 	metrics.Close()
 	close(stopCh)
@@ -207,4 +215,13 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 	tc = append(tc, perf.CreatePerfTestCase(float32(metrics.Latencies.P99.Seconds()*1000), "p99(ms)", t.Name()))
 
 	return tc
+}
+
+func fileExists(name string) bool {
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
 }
