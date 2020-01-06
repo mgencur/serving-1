@@ -186,10 +186,10 @@ func scaleRevisionByLoad(t *testing.T, numClients int) []junit.TestCase {
 		}
 		// iterate until we give a signal to stop
 		if fileExists(signalFile) {
-			t.Logf("Stopping the test")
+			t.Logf("Stopping the test at %s", time.Now())
 			break
 		}
-		t.Logf("Starting a new iteration")
+		t.Logf("Starting a new iteration at %s", time.Now())
 	}
 	metrics.Close()
 	close(stopCh)
