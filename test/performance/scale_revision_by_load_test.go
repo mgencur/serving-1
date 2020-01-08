@@ -55,7 +55,7 @@ const (
 	signalFile           = "/tmp/done-signal"
 )
 
-var concurrentClients = []int{40}
+var concurrentClients = []int{60}
 
 type scaleEvent struct {
 	oldScale  int
