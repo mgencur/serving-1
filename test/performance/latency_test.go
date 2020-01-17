@@ -105,6 +105,8 @@ func timeToServe(t *testing.T, img, query string, reqTimeout time.Duration) {
 	tc = append(tc, perf.CreatePerfTestCase(float32(metrics.Latencies.Quantile(0.90).Seconds()*1000), "p90(ms)", tName))
 	tc = append(tc, perf.CreatePerfTestCase(float32(metrics.Latencies.P99.Seconds()*1000), "p99(ms)", tName))
 
+	t.Logf("Errors percentage: %f", float32(1-metrics.Success)*100)
+
 	if err = testgrid.CreateXMLOutput(tc, tName); err != nil {
 		t.Fatalf("Cannot create output xml: %v", err)
 	}
