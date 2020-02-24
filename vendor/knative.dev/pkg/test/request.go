@@ -142,7 +142,19 @@ func WaitForEndpointState(
 	desc string,
 	resolvable bool,
 	opts ...interface{}) (*spoof.Response, error) {
-	return WaitForEndpointStateWithTimeout(kubeClient, logf, url, inState, desc, resolvable, spoof.RequestTimeout, opts...)
+	return WaitForEndpointStateSteady(kubeClient, logf, url, inState, 1 /*num consecutive responses matching inState*/, desc, resolvable, opts...)
+}
+
+func WaitForEndpointStateSteady(
+	kubeClient *KubeClient,
+	logf logging.FormatLogger,
+	url *url.URL,
+	inState spoof.ResponseChecker,
+	numConsecutiveInState int,
+	desc string,
+	resolvable bool,
+	opts ...interface{}) (*spoof.Response, error) {
+	return WaitForEndpointStateWithTimeout(kubeClient, logf, url, inState, numConsecutiveInState, desc, resolvable, spoof.RequestTimeout, opts...)
 }
 
 // WaitForEndpointStateWithTimeout will poll an endpoint until inState indicates the state is achieved
@@ -156,6 +168,7 @@ func WaitForEndpointStateWithTimeout(
 	logf logging.FormatLogger,
 	url *url.URL,
 	inState spoof.ResponseChecker,
+	numConsecutiveInState int,
 	desc string,
 	resolvable bool,
 	timeout time.Duration,
@@ -187,5 +200,5 @@ func WaitForEndpointStateWithTimeout(
 	}
 	client.RequestTimeout = timeout
 
-	return client.Poll(req, inState)
+	return client.PollSteady(req, inState, numConsecutiveInState)
 }

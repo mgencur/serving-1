@@ -284,6 +284,7 @@ func TestIstioProbing(t *testing.T) {
 						t.Logf,
 						u,
 						v1a1test.RetryingRouteInconsistency(pkgTest.MatchesAllOf(pkgTest.IsStatusOK, pkgTest.MatchesBody(test.HelloWorldText))),
+						1, /*num times in row to pass the check*/
 						"HelloWorldServesText",
 						test.ServingFlags.ResolvableDomain,
 						1*time.Minute,

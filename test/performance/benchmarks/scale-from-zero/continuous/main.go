@@ -207,6 +207,7 @@ func runScaleFromZero(ctx context.Context, clients *test.Clients, idx int, ro *v
 			log.Printf,
 			url,
 			pkgTest.MatchesAllOf(pkgTest.IsStatusOK, pkgTest.MatchesBody(helloWorldExpectedOutput)),
+			1, /*num times in row to pass the check*/
 			"HelloWorldServesText",
 			test.ServingFlags.ResolvableDomain, waitToServe,
 		)
