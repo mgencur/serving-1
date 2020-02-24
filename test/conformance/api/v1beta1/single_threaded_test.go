@@ -94,7 +94,8 @@ func TestSingleConcurrency(t *testing.T) {
 					if res.StatusCode == http.StatusInternalServerError {
 						return errors.New("detected concurrent requests")
 					} else if res.StatusCode != http.StatusOK {
-						return fmt.Errorf("non 200 response %v", res.StatusCode)
+						// Confirm whether it is "activator overload"
+						return fmt.Errorf("non 200 response: %s", res.String())
 					}
 				}
 			}
