@@ -91,6 +91,15 @@ func TestContainerErrorMsg(t *testing.T) {
 	}, "ContainerImageNotPresent")
 
 	if err != nil {
+		name, err := getRevisionFromConfiguration(clients, names.Config)
+		if err != nil {
+			t.Fatalf("Trying to get a revision on failure. Failed to get revision from configuration %s: %v", names.Config, err)
+		}
+		r, err := clients.ServingBetaClient.Revisions.Get(name, metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("Error: %v", err)
+		}
+		t.Logf("Revision %s: %+v", name, r)
 		t.Fatalf("Failed to validate configuration state: %s", err)
 	}
 
