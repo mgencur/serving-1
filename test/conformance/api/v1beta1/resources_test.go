@@ -97,7 +97,7 @@ func TestCustomResourcesLimits(t *testing.T) {
 			return err
 		}
 		if response.StatusCode != http.StatusOK {
-			return fmt.Errorf("StatusCode = %d, want %d", response.StatusCode, http.StatusOK)
+			return fmt.Errorf("StatusCode = %d, want %d, response: %s", response.StatusCode, http.StatusOK, response.String())
 		}
 		return nil
 	}
