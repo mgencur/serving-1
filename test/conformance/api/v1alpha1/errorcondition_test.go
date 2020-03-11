@@ -188,16 +188,15 @@ func TestContainerExitingMsg(t *testing.T) {
 			}, "ConfigContainersCrashing")
 
 			if err != nil {
-				name, err := getRevisionFromConfiguration(clients, names.Config)
-				if err != nil {
-					t.Fatalf("Trying to get a revision on failure. Failed to get revision from configuration %s: %v", names.Config, err)
+				name, errRevName := getRevisionFromConfiguration(clients, names.Config)
+				if errRevName != nil {
+					t.Logf("Failed to get revision name from configuration %s: %v", names.Config, errRevName)
 				}
-				r, err := clients.ServingAlphaClient.Revisions.Get(name, metav1.GetOptions{})
-				if err != nil {
-					t.Fatalf("Error: %v", err)
+				r, errRev := clients.ServingBetaClient.Revisions.Get(name, metav1.GetOptions{})
+				if errRev != nil {
+					t.Logf("Failed to get Revision from configuration %s: %v", names.Config, errRev)
 				}
-				t.Logf("Revision %s: %+v", name, r)
-				t.Fatalf("Failed to validate configuration state: %s", err)
+				t.Fatalf("Failed to validate configuration state: %s, revision: %+v", err, r)
 			}
 
 			revisionName, err := getRevisionFromConfiguration(clients, names.Config)
