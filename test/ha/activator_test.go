@@ -19,6 +19,7 @@ limitations under the License.
 package ha
 
 import (
+	"fmt"
 	"log"
 	"sort"
 	"testing"
@@ -27,6 +28,8 @@ import (
 	"knative.dev/pkg/ptr"
 	pkgTest "knative.dev/pkg/test"
 	"knative.dev/serving/pkg/apis/autoscaling"
+	"knative.dev/serving/pkg/apis/networking"
+	"knative.dev/serving/pkg/apis/serving"
 	revisionresourcenames "knative.dev/serving/pkg/reconciler/revision/resources/names"
 	rtesting "knative.dev/serving/pkg/testing/v1"
 	"knative.dev/serving/test"
@@ -46,7 +49,7 @@ const (
 func TestActivatorHA(t *testing.T) {
 	clients := e2e.Setup(t)
 
-	if err := waitForDeploymentScale(clients, activatorDeploymentName, haReplicas); err != nil {
+	if err := waitForDeploymentScale(clients, activatorDeploymentName, servingNamespace, haReplicas); err != nil {
 		t.Fatalf("Deployment %s not scaled to %d: %v", activatorDeploymentName, haReplicas, err)
 	}
 
@@ -97,7 +100,12 @@ func TestActivatorHA(t *testing.T) {
 	}
 	activatorPod := pods.Items[0].Name
 
-	origEndpoints, err := getPublicEndpoints(t, clients, resourcesScaleToZero.Revision.Name)
+	scaleToZeroServiceSelector := fmt.Sprintf("%s=%s,%s=%s",
+		serving.RevisionLabelKey, resourcesScaleToZero.Revision.Name,
+		networking.ServiceTypeKey, networking.ServiceTypePublic,
+	)
+
+	origEndpoints, err := getPublicEndpointsForSelector(t, clients, scaleToZeroServiceSelector, test.ServingNamespace)
 	if err != nil {
 		t.Fatalf("Unable to get public endpoints for revision %s: %v", resourcesScaleToZero.Revision.Name, err)
 	}
@@ -107,17 +115,17 @@ func TestActivatorHA(t *testing.T) {
 	})
 
 	// Wait for the killed activator to disappear from the knative service's endpoints.
-	if err := waitForChangedPublicEndpoints(t, clients, resourcesScaleToZero.Revision.Name, origEndpoints); err != nil {
+	if err := waitForChangedPublicEndpointsForSelector(t, clients, scaleToZeroServiceSelector, test.ServingNamespace, origEndpoints); err != nil {
 		t.Fatal("Failed to wait for the service to update its endpoints:", err)
 	}
 
 	// Assert the service at the first possible moment after the killed activator disappears from its endpoints.
 	assertServiceWorksNow(t, clients, spoofingClient, namesScaleToZero, scaleToZeroURL, test.PizzaPlanetText1)
 
-	if err := waitForPodDeleted(t, clients, activatorPod); err != nil {
+	if err := waitForPodDeleted(t, clients, activatorPod, servingNamespace); err != nil {
 		t.Fatalf("Did not observe %s to actually be deleted: %v", activatorPod, err)
 	}
-	if err := waitForDeploymentScale(clients, activatorDeploymentName, haReplicas); err != nil {
+	if err := waitForDeploymentScale(clients, activatorDeploymentName, servingNamespace, haReplicas); err != nil {
 		t.Fatalf("Deployment %s failed to scale up: %v", activatorDeploymentName, err)
 	}
 
@@ -134,7 +142,7 @@ func TestActivatorHA(t *testing.T) {
 
 	activatorPod = pods.Items[0].Name // Stop the oldest activator pod remaining.
 
-	origEndpoints, err = getPublicEndpoints(t, clients, resourcesScaleToZero.Revision.Name)
+	origEndpoints, err = getPublicEndpointsForSelector(t, clients, scaleToZeroServiceSelector, test.ServingNamespace)
 	if err != nil {
 		t.Fatalf("Unable to get public endpoints for revision %s: %v", resourcesScaleToZero.Revision.Name, err)
 	}
@@ -144,7 +152,7 @@ func TestActivatorHA(t *testing.T) {
 	})
 
 	// Wait for the killed activator to disappear from the knative service's endpoints.
-	if err := waitForChangedPublicEndpoints(t, clients, resourcesScaleToZero.Revision.Name, origEndpoints); err != nil {
+	if err := waitForChangedPublicEndpointsForSelector(t, clients, scaleToZeroServiceSelector, test.ServingNamespace, origEndpoints); err != nil {
 		t.Fatal("Failed to wait for the service to update its endpoints:", err)
 	}
 

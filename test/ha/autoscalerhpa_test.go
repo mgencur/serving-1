@@ -38,11 +38,11 @@ const (
 func TestAutoscalerHPAHANewRevision(t *testing.T) {
 	clients := e2e.Setup(t)
 
-	if err := waitForDeploymentScale(clients, autoscalerHPADeploymentName, haReplicas); err != nil {
+	if err := waitForDeploymentScale(clients, autoscalerHPADeploymentName, servingNamespace, haReplicas); err != nil {
 		t.Fatalf("Deployment %s not scaled to %d: %v", autoscalerHPADeploymentName, haReplicas, err)
 	}
 
-	leaderController, err := getLeader(t, clients, autoscalerHPALease)
+	leaderController, err := getLeader(t, clients, autoscalerHPALease, servingNamespace)
 	if err != nil {
 		t.Fatalf("Failed to get leader: %v", err)
 	}
@@ -58,12 +58,12 @@ func TestAutoscalerHPAHANewRevision(t *testing.T) {
 
 	clients.KubeClient.Kube.CoreV1().Pods(servingNamespace).Delete(leaderController, &metav1.DeleteOptions{})
 
-	if err := waitForPodDeleted(t, clients, leaderController); err != nil {
+	if err := waitForPodDeleted(t, clients, leaderController, servingNamespace); err != nil {
 		t.Fatalf("Did not observe %s to actually be deleted: %v", leaderController, err)
 	}
 
 	// Make sure a new leader has been elected
-	if _, err = getLeader(t, clients, autoscalerHPALease); err != nil {
+	if _, err = getLeader(t, clients, autoscalerHPALease, servingNamespace); err != nil {
 		t.Fatalf("Failed to find new leader: %v", err)
 	}
 

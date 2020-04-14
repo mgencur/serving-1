@@ -22,45 +22,54 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/ptr"
 	"knative.dev/serving/test"
 	"knative.dev/serving/test/e2e"
 )
 
 const (
-	controllerDeploymentName = "controller"
+	ingressNamespace         = "knative-serving-ingress"
+	kourierHPALease          = "kourier"
+	kourierControlDeployment = "3scale-kourier-control"
+	kourierControlLabel      = "app=3scale-kourier-control"
 )
 
-func TestControllerHA(t *testing.T) {
+func TestKourierControlHA(t *testing.T) {
 	clients := e2e.Setup(t)
 
-	if err := waitForDeploymentScale(clients, controllerDeploymentName, servingNamespace, haReplicas); err != nil {
-		t.Fatalf("Deployment %s not scaled to %d: %v", controllerDeploymentName, haReplicas, err)
+	if err := waitForDeploymentScale(clients, kourierControlDeployment, ingressNamespace, haReplicas); err != nil {
+		t.Fatalf("Deployment %s not scaled to %d: %v", kourierControlDeployment, haReplicas, err)
 	}
 
-	leaderController, err := getLeader(t, clients, controllerDeploymentName, servingNamespace)
+	leaderController, err := getLeader(t, clients, kourierHPALease, ingressNamespace)
 	if err != nil {
 		t.Fatalf("Failed to get leader: %v", err)
 	}
 
-	service1Names, resources := createPizzaPlanetService(t)
-	test.CleanupOnInterrupt(func() { test.TearDown(clients, service1Names) })
-	defer test.TearDown(clients, service1Names)
+	// Create a service that we will continually probe during kourier restart.
+	names, resources := createPizzaPlanetService(t)
+	test.CleanupOnInterrupt(func() { test.TearDown(clients, names) })
+	defer test.TearDown(clients, names)
 
-	clients.KubeClient.Kube.CoreV1().Pods(servingNamespace).Delete(leaderController, &metav1.DeleteOptions{})
+	clients.KubeClient.Kube.CoreV1().Pods(ingressNamespace).Delete(leaderController, &metav1.DeleteOptions{
+		GracePeriodSeconds: ptr.Int64(0),
+	})
 
-	if err := waitForPodDeleted(t, clients, leaderController, servingNamespace); err != nil {
+	if err := waitForPodDeleted(t, clients, leaderController, ingressNamespace); err != nil {
 		t.Fatalf("Did not observe %s to actually be deleted: %v", leaderController, err)
 	}
 
 	// Make sure a new leader has been elected
-	if _, err = getLeader(t, clients, controllerDeploymentName, servingNamespace); err != nil {
+	if _, err = getLeader(t, clients, kourierHPALease, ingressNamespace); err != nil {
 		t.Fatalf("Failed to find new leader: %v", err)
 	}
 
-	assertServiceEventuallyWorks(t, clients, service1Names, resources.Service.Status.URL.URL(), test.PizzaPlanetText1)
+	assertServiceEventuallyWorks(t, clients, names, resources.Service.Status.URL.URL(), test.PizzaPlanetText1)
 
 	// Verify that after changing the leader we can still create a new kservice
 	service2Names, _ := createPizzaPlanetService(t)
 	test.CleanupOnInterrupt(func() { test.TearDown(clients, service2Names) })
 	test.TearDown(clients, service2Names)
+
+	//TODO: what else to check?
 }

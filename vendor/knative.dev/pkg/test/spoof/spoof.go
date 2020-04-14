@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	requestInterval = 1 * time.Second
+	requestInterval = 10 * time.Millisecond
 	// RequestTimeout is the default timeout for the polling requests.
 	RequestTimeout = 5 * time.Minute
 	// Name of the temporary HTTP header that is added to http.Request to indicate that

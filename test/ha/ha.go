@@ -31,8 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	pkgTest "knative.dev/pkg/test"
 	"knative.dev/pkg/test/spoof"
-	"knative.dev/serving/pkg/apis/networking"
-	"knative.dev/serving/pkg/apis/serving"
 	rtesting "knative.dev/serving/pkg/testing/v1"
 	"knative.dev/serving/test"
 	"knative.dev/serving/test/e2e"
@@ -44,33 +42,30 @@ const (
 	haReplicas       = 2
 )
 
-func getLeader(t *testing.T, clients *test.Clients, lease string) (string, error) {
+func getLeader(t *testing.T, clients *test.Clients, lease string, namespace string) (string, error) {
 	var leader string
 	err := wait.PollImmediate(test.PollInterval, time.Minute, func() (bool, error) {
-		lease, err := clients.KubeClient.Kube.CoordinationV1().Leases(servingNamespace).Get(lease, metav1.GetOptions{})
+		lease, err := clients.KubeClient.Kube.CoordinationV1().Leases(namespace).Get(lease, metav1.GetOptions{})
 		if err != nil {
 			return false, fmt.Errorf("error getting lease %s: %w", lease, err)
 		}
 		leader = strings.Split(*lease.Spec.HolderIdentity, "_")[0]
 		// the leader must be an existing pod
-		return podExists(clients, leader)
+		return podExists(clients, leader, namespace)
 	})
 	return leader, err
 }
 
-func waitForPodDeleted(t *testing.T, clients *test.Clients, podName string) error {
+func waitForPodDeleted(t *testing.T, clients *test.Clients, podName, namespace string) error {
 	return wait.PollImmediate(test.PollInterval, time.Minute, func() (bool, error) {
-		exists, err := podExists(clients, podName)
+		exists, err := podExists(clients, podName, namespace)
 		return !exists, err
 	})
 }
 
-func getPublicEndpoints(t *testing.T, clients *test.Clients, revision string) ([]string, error) {
-	endpoints, err := clients.KubeClient.Kube.CoreV1().Endpoints(test.ServingNamespace).List(metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s,%s=%s",
-			serving.RevisionLabelKey, revision,
-			networking.ServiceTypeKey, networking.ServiceTypePublic,
-		),
+func getPublicEndpointsForSelector(t *testing.T, clients *test.Clients, labelSelector, namespace string) ([]string, error) {
+	endpoints, err := clients.KubeClient.Kube.CoreV1().Endpoints(namespace).List(metav1.ListOptions{
+		LabelSelector: labelSelector,
 	})
 	if err != nil || len(endpoints.Items) != 1 {
 		return nil, fmt.Errorf("no endpoints or error: %w", err)
@@ -82,15 +77,34 @@ func getPublicEndpoints(t *testing.T, clients *test.Clients, revision string) ([
 	return hosts, nil
 }
 
-func waitForChangedPublicEndpoints(t *testing.T, clients *test.Clients, revision string, origEndpoints []string) error {
+func getPublicEndpointsForService(t *testing.T, clients *test.Clients, name, namespace string) ([]string, error) {
+	endpoints, err := clients.KubeClient.Kube.CoreV1().Endpoints(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var hosts []string
+	for _, addr := range endpoints.Subsets[0].Addresses {
+		hosts = append(hosts, addr.IP)
+	}
+	return hosts, nil
+}
+
+func waitForChangedPublicEndpointsForSelector(t *testing.T, clients *test.Clients, labelSelector, namespace string, origEndpoints []string) error {
 	return wait.PollImmediate(100*time.Millisecond, time.Minute, func() (bool, error) {
-		newEndpoints, err := getPublicEndpoints(t, clients, revision)
+		newEndpoints, err := getPublicEndpointsForSelector(t, clients, labelSelector, namespace)
 		return !cmp.Equal(origEndpoints, newEndpoints), err
 	})
 }
 
-func podExists(clients *test.Clients, podName string) (bool, error) {
-	if _, err := clients.KubeClient.Kube.CoreV1().Pods(servingNamespace).Get(podName, metav1.GetOptions{}); err != nil {
+func waitForChangedPublicEndpointsForService(t *testing.T, clients *test.Clients, name, namespace string, origEndpoints []string) error {
+	return wait.PollImmediate(100*time.Millisecond, time.Minute, func() (bool, error) {
+		newEndpoints, err := getPublicEndpointsForService(t, clients, name, namespace)
+		return !cmp.Equal(origEndpoints, newEndpoints), err
+	})
+}
+
+func podExists(clients *test.Clients, name, namespace string) (bool, error) {
+	if _, err := clients.KubeClient.Kube.CoreV1().Pods(namespace).Get(name, metav1.GetOptions{}); err != nil {
 		if apierrs.IsNotFound(err) {
 			return false, nil
 		}
@@ -99,7 +113,7 @@ func podExists(clients *test.Clients, podName string) (bool, error) {
 	return true, nil
 }
 
-func waitForDeploymentScale(clients *test.Clients, name string, scale int) error {
+func waitForDeploymentScale(clients *test.Clients, name, namespace string, scale int) error {
 	return pkgTest.WaitForDeploymentState(
 		clients.KubeClient,
 		name,
@@ -107,7 +121,7 @@ func waitForDeploymentScale(clients *test.Clients, name string, scale int) error
 			return d.Status.ReadyReplicas == int32(scale), nil
 		},
 		"DeploymentIsScaled",
-		servingNamespace,
+		namespace,
 		time.Minute,
 	)
 }
