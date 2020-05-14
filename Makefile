@@ -18,8 +18,12 @@ test-install:
 .PHONY: test-install
 
 test-e2e:
-	./openshift/e2e-tests-openshift.sh
+	./openshift/e2e-tests.sh
 .PHONY: test-e2e
+
+test-e2e-no-install:
+	./openshift/e2e-tests-no-install.sh
+.PHONY: test-e2e-no-install
 
 # Generate Dockerfiles for core and test images used by ci-operator. The files need to be committed manually.
 generate-dockerfiles:
