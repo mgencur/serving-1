@@ -4,6 +4,7 @@ branch=${1-'knative-v0.3'}
 
 cat <<EOF
 tag_specification:
+  cluster: https://api.ci.openshift.org
   name: '4.1'
   namespace: ocp
 promotion:
@@ -34,6 +35,12 @@ resources:
       cpu: 100m
       memory: 200Mi
 images:
+EOF
+
+cat <<EOF
+- dockerfile_path: openshift/ci-operator/source-image/Dockerfile
+  from: src
+  to: knative-serving-src
 EOF
 
 core_images=$(find ./openshift/ci-operator/knative-images -mindepth 1 -maxdepth 1 -type d)
