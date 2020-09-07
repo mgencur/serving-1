@@ -34,6 +34,11 @@ import (
 	v1a1test "knative.dev/serving/test/v1alpha1"
 )
 
+type indexedResponse struct {
+	id   int
+	resp string
+}
+
 func waitForExpectedResponse(t pkgTest.TLegacy, clients *test.Clients, url *url.URL, expectedResponse string) error {
 	client, err := pkgTest.NewSpoofingClient(clients.KubeClient, t.Logf, url.Hostname(), test.ServingFlags.ResolvableDomain, test.AddRootCAtoTransport(t.Logf, clients, test.ServingFlags.Https))
 	if err != nil {
@@ -118,7 +123,7 @@ func checkDistribution(t pkgTest.TLegacy, clients *test.Clients, url *url.URL, n
 }
 
 // checkResponses verifies that each "expectedResponse" is present in "actualResponses" at least "min" times.
-func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expectedResponses []string, actualResponses []string) error {
+func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expectedResponses []string, actualResponses []indexedResponse) error {
 	// counts maps the expected response body to the number of matching requests we saw.
 	counts := make(map[string]int)
 	// badCounts maps the unexpected response body to the number of matching requests we saw.
@@ -133,16 +138,20 @@ func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expected
 	for _, ar := range actualResponses {
 		expected := false
 		for _, er := range expectedResponses {
-			if strings.Contains(ar, er) {
+			if strings.Contains(ar.resp, er) {
 				counts[er]++
 				expected = true
 			}
 		}
 		if !expected {
-			badCounts[ar]++
+			badCounts[ar.resp]++
+			t.Logf("For domain %s: got unexpected response for request %d", domain, ar.id)
 		}
 	}
-
+	// Print unexpected responses for debugging purposes
+	for badResponse, count := range badCounts {
+		t.Logf("For domain %s: saw unexpected response %q %d times.", domain, badResponse, count)
+	}
 	// Verify that we saw each entry in "expectedResponses" at least "min" times.
 	// check(SELECT body FROM $counts WHERE total < $min)
 	totalMatches := 0
@@ -151,14 +160,10 @@ func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expected
 		if count < min {
 			return fmt.Errorf("domain %s failed: want at least %d, got %d for response %q", domain, min, count, er)
 		}
-
 		t.Logf("For domain %s: wanted at least %d, got %d requests.", domain, min, count)
 		totalMatches += count
 	}
 	// Verify that the total expected responses match the number of requests made.
-	for badResponse, count := range badCounts {
-		t.Logf("Saw unexpected response %q %d times.", badResponse, count)
-	}
 	if totalMatches < num {
 		return fmt.Errorf("domain %s: saw expected responses %d times, wanted %d", domain, totalMatches, num)
 	}
@@ -167,12 +172,13 @@ func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expected
 }
 
 // sendRequests sends "num" requests to "url", returning a string for each spoof.Response.Body.
-func sendRequests(client spoof.Interface, url *url.URL, num int) ([]string, error) {
-	responses := make([]string, num)
+func sendRequests(client spoof.Interface, url *url.URL, num int) ([]indexedResponse, error) {
+	responses := make([]indexedResponse, num)
 
 	// Launch "num" requests, recording the responses we get in "responses".
 	g, _ := errgroup.WithContext(context.Background())
 	for i := 0; i < num; i++ {
+		i := i
 		// We don't index into "responses" inside the goroutine to avoid a race, see #1545.
 		result := &responses[i]
 		g.Go(func() error {
@@ -186,7 +192,10 @@ func sendRequests(client spoof.Interface, url *url.URL, num int) ([]string, erro
 				return err
 			}
 
-			*result = string(resp.Body)
+			*result = indexedResponse{i, string(resp.Body)}
+			if resp.StatusCode != http.StatusOK {
+				fmt.Errorf("unexpected status code for request %d: %d", i, resp.StatusCode)
+			}
 			return nil
 		})
 	}
