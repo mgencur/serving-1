@@ -45,7 +45,7 @@ const (
 	PizzaPlanetText2 = "Re-energize yourself with a slice of pepperoni!"
 	HelloWorldText   = "Hello World! How about some tasty noodles?"
 
-	ConcurrentRequests = 200
+	NumRequests = 200
 	// We expect to see 100% of requests succeed for traffic sent directly to revisions.
 	// This might be a bad assumption.
 	MinDirectPercentage = 1

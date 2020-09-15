@@ -19,13 +19,14 @@ package v1
 import (
 	"context"
 	"fmt"
+	"golang.org/x/sync/errgroup"
+	"knative.dev/pkg/pool"
 	"math"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
-	"golang.org/x/sync/errgroup"
 	pkgTest "knative.dev/pkg/test"
 	"knative.dev/pkg/test/spoof"
 	"knative.dev/serving/pkg/apis/serving"
@@ -47,6 +48,26 @@ func waitForExpectedResponse(t pkgTest.TLegacy, clients *test.Clients, url *url.
 	return err
 }
 
+type trafficObjectives struct {
+	url               *url.URL
+	minSuccesses      int
+	expectedResponses []string
+}
+
+type requestCtx struct {
+	client *spoof.SpoofingClient
+	url    *url.URL
+}
+
+// indexedResponse holds the index and body of the response for the given requested url.
+type indexedResponse struct {
+	index int
+	url   *url.URL
+	body  string
+}
+
+type indexedResponses []indexedResponse
+
 func validateDomains(t pkgTest.TLegacy, clients *test.Clients, baseDomain *url.URL,
 	baseExpected, trafficTargets, targetsExpected []string) error {
 	subdomains := make([]*url.URL, 0, len(trafficTargets))
@@ -57,6 +78,7 @@ func validateDomains(t pkgTest.TLegacy, clients *test.Clients, baseDomain *url.U
 	}
 
 	g, _ := errgroup.WithContext(context.Background())
+
 	// We don't have a good way to check if the route is updated so we will wait until a subdomain has
 	// started returning at least one expected result to key that we should validate percentage splits.
 	// In order for tests to succeed reliably, we need to make sure that all domains succeed.
@@ -79,46 +101,102 @@ func validateDomains(t pkgTest.TLegacy, clients *test.Clients, baseDomain *url.U
 		return fmt.Errorf("error with initial domain probing: %w", err)
 	}
 
-	g.Go(func() error {
-		minBasePercentage := test.MinSplitPercentage
-		if len(baseExpected) == 1 {
-			minBasePercentage = test.MinDirectPercentage
-		}
-		min := int(math.Floor(test.ConcurrentRequests * minBasePercentage))
-		return checkDistribution(t, clients, baseDomain, test.ConcurrentRequests, min, baseExpected)
-	})
+	// Holds expected response objectives for all domains.
+	expectedTraffic := make([]trafficObjectives, 0, len(trafficTargets)+1 /* one for the base domain*/)
+
+	minBasePercentage := test.MinSplitPercentage
+	if len(baseExpected) == 1 {
+		minBasePercentage = test.MinDirectPercentage
+	}
+	expectedTraffic = append(expectedTraffic,
+		trafficObjectives{
+			url:               baseDomain,
+			minSuccesses:      int(math.Floor(test.NumRequests * minBasePercentage)),
+			expectedResponses: baseExpected,
+		},
+	)
+
 	for i, subdomain := range subdomains {
 		i, subdomain := i, subdomain
-		g.Go(func() error {
-			min := int(math.Floor(test.ConcurrentRequests * test.MinDirectPercentage))
-			return checkDistribution(t, clients, subdomain, test.ConcurrentRequests, min, []string{targetsExpected[i]})
+		expectedTraffic = append(expectedTraffic,
+			trafficObjectives{
+				url:               subdomain,
+				minSuccesses:      int(math.Floor(test.NumRequests * test.MinDirectPercentage)),
+				expectedResponses: []string{targetsExpected[i]},
+			},
+		)
+	}
+
+	return checkDistribution(t, clients, expectedTraffic)
+}
+
+func checkDistribution(t pkgTest.TLegacy, clients *test.Clients, expectedTraffic []trafficObjectives) error {
+	// requestPool holds all requests that will be performed via thread pool.
+	var requestPool []*requestCtx
+	for _, traffic := range expectedTraffic {
+		client, err := pkgTest.NewSpoofingClient(clients.KubeClient,
+			t.Logf,
+			traffic.url.Hostname(),
+			test.ServingFlags.ResolvableDomain,
+			test.AddRootCAtoTransport(t.Logf, clients, test.ServingFlags.Https),
+		)
+		if err != nil {
+			return err
+		}
+		ctx := requestCtx{
+			client: client,
+			url:    traffic.url,
+		}
+		// Produce the target requests for this url.
+		for i := 0; i < test.NumRequests; i++ {
+			requestPool = append(requestPool, &ctx)
+		}
+	}
+
+	wg := pool.New(8)
+	resultCh := make(chan indexedResponse, len(requestPool))
+
+	for i, requestCtx := range requestPool {
+		i, requestCtx := i, requestCtx
+		wg.Go(func() error {
+			req, err := http.NewRequest(http.MethodGet, requestCtx.url.String(), nil)
+			if err != nil {
+				return err
+			}
+			resp, err := requestCtx.client.Do(req)
+			if err != nil {
+				return err
+			}
+			resultCh <- indexedResponse{
+				index: i,
+				url:   requestCtx.url,
+				body:  string(resp.Body),
+			}
+			return nil
 		})
 	}
-	if err := g.Wait(); err != nil {
+
+	if err := wg.Wait(); err != nil {
 		return fmt.Errorf("error checking routing distribution: %w", err)
+	}
+	close(resultCh)
+
+	responses := make(map[*url.URL]indexedResponses)
+
+	// Register responses for each url separately.
+	for r := range resultCh {
+		responses[r.url] = append(responses[r.url], r)
+	}
+
+	// Validate responses for each url.
+	for _, traffic := range expectedTraffic {
+		checkResponses(t, test.NumRequests, traffic.minSuccesses, traffic.url.Hostname(), traffic.expectedResponses, responses[traffic.url])
 	}
 	return nil
 }
 
-// checkDistribution sends "num" requests to "domain", then validates that
-// we see each body in "expectedResponses" at least "min" times.
-func checkDistribution(t pkgTest.TLegacy, clients *test.Clients, url *url.URL, num, min int, expectedResponses []string) error {
-	client, err := pkgTest.NewSpoofingClient(clients.KubeClient, t.Logf, url.Hostname(), test.ServingFlags.ResolvableDomain, test.AddRootCAtoTransport(t.Logf, clients, test.ServingFlags.Https))
-	if err != nil {
-		return err
-	}
-
-	t.Logf("Performing %d concurrent requests to %s", num, url)
-	actualResponses, err := sendRequests(client, url, num)
-	if err != nil {
-		return err
-	}
-
-	return checkResponses(t, num, min, url.Hostname(), expectedResponses, actualResponses)
-}
-
 // checkResponses verifies that each "expectedResponse" is present in "actualResponses" at least "min" times.
-func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expectedResponses []string, actualResponses []string) error {
+func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expectedResponses []string, actualResponses indexedResponses) error {
 	// counts maps the expected response body to the number of matching requests we saw.
 	counts := make(map[string]int)
 	// badCounts maps the unexpected response body to the number of matching requests we saw.
@@ -130,17 +208,17 @@ func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expected
 	//   WHERE body IN $expectedResponses
 	//   GROUP BY body
 	// )
-	for i, ar := range actualResponses {
+	for _, ar := range actualResponses {
 		expected := false
 		for _, er := range expectedResponses {
-			if strings.Contains(ar, er) {
+			if strings.Contains(ar.body, er) {
 				counts[er]++
 				expected = true
 			}
 		}
 		if !expected {
-			badCounts[ar]++
-			t.Logf("For domain %s: got unexpected response for request %d", domain, i)
+			badCounts[ar.body]++
+			t.Logf("For domain %s: got unexpected response for request %d", domain, ar.index)
 		}
 	}
 	// Print unexpected responses for debugging purposes
@@ -164,33 +242,6 @@ func checkResponses(t pkgTest.TLegacy, num int, min int, domain string, expected
 	}
 	// If we made it here, the implementation conforms. Congratulations!
 	return nil
-}
-
-// sendRequests sends "num" requests to "url", returning a string for each spoof.Response.Body.
-func sendRequests(client spoof.Interface, url *url.URL, num int) ([]string, error) {
-	responses := make([]string, num)
-
-	// Launch "num" requests, recording the responses we get in "responses".
-	g, _ := errgroup.WithContext(context.Background())
-	for i := 0; i < num; i++ {
-		// We don't index into "responses" inside the goroutine to avoid a race, see #1545.
-		result := &responses[i]
-		g.Go(func() error {
-			req, err := http.NewRequest(http.MethodGet, url.String(), nil)
-			if err != nil {
-				return err
-			}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				return err
-			}
-
-			*result = string(resp.Body)
-			return nil
-		})
-	}
-	return responses, g.Wait()
 }
 
 // Validates service health and vended content match for a runLatest Service.
