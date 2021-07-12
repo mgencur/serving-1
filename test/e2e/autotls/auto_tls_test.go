@@ -61,7 +61,7 @@ func TestTLS(t *testing.T) {
 }
 
 func TestTLSDisabledWithAnnotation(t *testing.T) {
-	clients := e2e.SetupWithNamespace(t, test.TLSNamespace)
+	clients := e2e.SetupWithNamespace(t, test.ServingFlags.TLSTestNamespace)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),
@@ -87,7 +87,7 @@ func TestTLSDisabledWithAnnotation(t *testing.T) {
 }
 
 func testAutoTLS(t *testing.T) {
-	clients := e2e.SetupWithNamespace(t, test.TLSNamespace)
+	clients := e2e.SetupWithNamespace(t, test.ServingFlags.TLSTestNamespace)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),

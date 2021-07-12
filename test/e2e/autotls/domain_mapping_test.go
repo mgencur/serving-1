@@ -59,7 +59,7 @@ func TestDomainMappingAutoTLS(t *testing.T) {
 
 	ctx := context.Background()
 
-	clients := e2e.SetupWithNamespace(t, test.TLSNamespace)
+	clients := e2e.SetupWithNamespace(t, test.ServingFlags.TLSTestNamespace)
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),

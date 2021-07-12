@@ -49,13 +49,13 @@ import (
 
 // Setup creates the client objects needed in the e2e tests.
 func Setup(t *testing.T) *test.Clients {
-	return SetupWithNamespace(t, test.ServingNamespace)
+	return SetupWithNamespace(t, test.ServingFlags.TestNamespace)
 }
 
 // SetupAlternativeNamespace creates the client objects needed in e2e tests
 // under the alternative namespace.
 func SetupAlternativeNamespace(t *testing.T) *test.Clients {
-	return SetupWithNamespace(t, test.AlternativeServingNamespace)
+	return SetupWithNamespace(t, test.ServingFlags.AltTestNamespace)
 }
 
 // SetupWithNamespace creates the client objects needed in the e2e tests under the specified namespace.
@@ -63,8 +63,10 @@ func SetupWithNamespace(t *testing.T, namespace string) *test.Clients {
 	t.Helper()
 	pkgTest.SetupLoggingFlags()
 
-	cancel := logstream.Start(t)
-	t.Cleanup(cancel)
+	if !test.ServingFlags.DisableLogStream {
+		cancel := logstream.Start(t)
+		t.Cleanup(cancel)
+	}
 
 	clients, err := test.NewClients(
 		pkgTest.Flags.Kubeconfig,
@@ -106,7 +108,7 @@ func WaitForScaleToZero(t *testing.T, deploymentName string, clients *test.Clien
 			return d.Status.ReadyReplicas == 0, nil
 		},
 		"DeploymentIsScaledDown",
-		test.ServingNamespace,
+		test.ServingFlags.TestNamespace,
 		cfg.ScaleToZeroGracePeriod*6,
 	)
 }
@@ -130,7 +132,7 @@ func waitForActivatorEndpoints(ctx *TestContext) error {
 			return false, nil
 		}
 
-		svcEps, err := ctx.clients.KubeClient.CoreV1().Endpoints(test.ServingNamespace).Get(
+		svcEps, err := ctx.clients.KubeClient.CoreV1().Endpoints(test.ServingFlags.TestNamespace).Get(
 			context.Background(), ctx.resources.Revision.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -187,7 +189,7 @@ func CreateAndVerifyInitialScaleConfiguration(t *testing.T, clients *test.Client
 	t.Logf("Waiting for Configuration %q to transition to Ready with %d number of pods.", names.Config, wantPods)
 	selector := fmt.Sprintf("%s=%s", serving.ConfigurationLabelKey, names.Config)
 	if err := v1test.WaitForConfigurationState(clients.ServingClient, names.Config, func(s *v1.Configuration) (b bool, e error) {
-		pods := clients.KubeClient.CoreV1().Pods(test.ServingNamespace)
+		pods := clients.KubeClient.CoreV1().Pods(test.ServingFlags.TestNamespace)
 		podList, err := pods.List(context.Background(), metav1.ListOptions{
 			LabelSelector: selector,
 			// Include both running and terminating pods, because we will scale down from
