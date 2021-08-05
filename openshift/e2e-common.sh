@@ -248,10 +248,8 @@ function create_configmaps(){
 function prepare_knative_serving_tests_nightly {
   echo ">> Creating test resources for OpenShift (test/config/)"
 
-  run_ytt \
-    -f "test/config/ytt/lib" \
-    -f "test/config/ytt/values.yaml" \
-    -f test/config/ytt/core/resources.yaml | kubectl apply -f -
+  oc apply -f test/config/cluster-resources.yaml
+  oc apply -f test/config/test-resources.yaml
 
   oc adm policy add-scc-to-user privileged -z default -n serving-tests
   oc adm policy add-scc-to-user privileged -z default -n serving-tests-alt
