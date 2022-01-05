@@ -194,7 +194,7 @@ function install_catalogsource(){
   pushd ${SERVERLESS_DIR}
 
   source ./test/lib.bash
-  create_namespaces
+  create_namespaces "${SYSTEM_NAMESPACES[@]}"
   update_csv $CURRENT_DIR || return $?
   # Make OPENSHIFT_CI empty to use nightly build images.
   OPENSHIFT_CI="" ensure_catalogsource_installed || return $?
