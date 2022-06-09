@@ -164,7 +164,7 @@ func (sc *SpoofingClient) Do(req *http.Request, errorRetryCheckers ...interface{
 // If no retry checkers are specified `DefaultErrorRetryChecker` will be used.
 func (sc *SpoofingClient) Poll(req *http.Request, inState ResponseChecker, checkers ...interface{}) (*Response, error) {
 	if len(checkers) == 0 {
-		checkers = []interface{}{ErrorRetryChecker(DefaultErrorRetryChecker), ResponseRetryChecker(DefaultResponseRetryChecker), ResponseRetryChecker(RouteInconsistencyRetryChecker)}
+		checkers = []interface{}{ErrorRetryChecker(DefaultErrorRetryChecker), ResponseRetryChecker(DefaultResponseRetryChecker)}
 	}
 
 	var resp *Response
@@ -331,6 +331,9 @@ func (sc *SpoofingClient) endpointState(
 }
 
 func (sc *SpoofingClient) Check(req *http.Request, inState ResponseChecker, checkers ...interface{}) (*Response, error) {
+	if len(checkers) == 0 {
+		checkers = []interface{}{ErrorRetryChecker(DefaultErrorRetryChecker), ResponseRetryChecker(DefaultResponseRetryChecker), ResponseRetryChecker(RouteInconsistencyRetryChecker())}
+	}
 	resp, err := sc.Do(req, checkers...)
 	if err != nil {
 		return nil, err

@@ -12,11 +12,20 @@ func isUnknownAuthority(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "certificate signed by unknown authority")
 }
 
-// RetryingRouteInconsistency retries common requests seen when creating a new route
+// RouteInconsistencyRetryChecker retries common requests seen when creating a new route
 // - 503 to account for Openshift route inconsistency (https://jira.coreos.com/browse/SRVKS-157)
-func RouteInconsistencyRetryChecker(resp *Response) (bool, error) {
-	if resp.StatusCode == http.StatusServiceUnavailable {
-		return true, fmt.Errorf("retrying route inconsistency request: %s", resp)
+func RouteInconsistencyRetryChecker() ResponseChecker {
+	const neededSuccesses = 32
+	var successes int
+	return func(resp *Response) (bool, error) {
+		if resp.StatusCode == http.StatusServiceUnavailable {
+			successes = 0
+			return true, fmt.Errorf("retrying route inconsistency request: %s", resp)
+		}
+		successes++
+		if successes < neededSuccesses {
+			return true, fmt.Errorf("successful requests: %d, required: %d", successes, neededSuccesses)
+		}
+		return false, nil
 	}
-	return false, nil
 }
