@@ -1,9 +1,9 @@
 diff --git a/vendor/knative.dev/pkg/test/spoof/openshift_checks.go b/vendor/knative.dev/pkg/test/spoof/openshift_checks.go
 new file mode 100644
-index 000000000..f7ba08f82
+index 000000000..acaebe95b
 --- /dev/null
 +++ b/vendor/knative.dev/pkg/test/spoof/openshift_checks.go
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,40 @@
 +package spoof
 +
 +import (
@@ -26,8 +26,26 @@ index 000000000..f7ba08f82
 +	}
 +	return false, nil
 +}
++
++// RouteInconsistencyMultiRetryChecker retries common requests seen when creating a new route
++// - 503 to account for Openshift route inconsistency (https://jira.coreos.com/browse/SRVKS-157)
++func RouteInconsistencyMultiRetryChecker() ResponseChecker {
++	const neededSuccesses = 32
++	var successes int
++	return func(resp *Response) (bool, error) {
++		if resp.StatusCode == http.StatusServiceUnavailable {
++			successes = 0
++			return true, fmt.Errorf("retrying route inconsistency request: %s", resp)
++		}
++		successes++
++		if successes < neededSuccesses {
++			return true, fmt.Errorf("successful requests: %d, required: %d", successes, neededSuccesses)
++		}
++		return false, nil
++	}
++}
 diff --git a/vendor/knative.dev/pkg/test/spoof/spoof.go b/vendor/knative.dev/pkg/test/spoof/spoof.go
-index 147a64adc..1cf0ddd7c 100644
+index 147a64adc..5ee44906e 100644
 --- a/vendor/knative.dev/pkg/test/spoof/spoof.go
 +++ b/vendor/knative.dev/pkg/test/spoof/spoof.go
 @@ -164,7 +164,7 @@ func (sc *SpoofingClient) Do(req *http.Request, errorRetryCheckers ...interface{
@@ -49,3 +67,13 @@ index 147a64adc..1cf0ddd7c 100644
  	return false, err
  }
  
+@@ -328,6 +331,9 @@ func (sc *SpoofingClient) endpointState(
+ }
+ 
+ func (sc *SpoofingClient) Check(req *http.Request, inState ResponseChecker, checkers ...interface{}) (*Response, error) {
++	if len(checkers) == 0 {
++		checkers = []interface{}{ErrorRetryChecker(DefaultErrorRetryChecker), ResponseRetryChecker(DefaultResponseRetryChecker), ResponseRetryChecker(RouteInconsistencyMultiRetryChecker())}
++	}
+ 	resp, err := sc.Do(req, checkers...)
+ 	if err != nil {
+ 		return nil, err
