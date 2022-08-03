@@ -50,3 +50,6 @@ git apply "${manifest_path}/002-openshift-serving-role.patch"
 # TODO: Remove this once upstream fixed https://github.com/knative/operator/issues/376.
 # See also https://issues.redhat.com/browse/SRVKS-670.
 git apply "${manifest_path}/003-serving-pdb.patch"
+
+# Add internal-tls patch. The backport will conflict with the downloaded manifest.
+git apply "${manifest_path}/004-internal-tls.patch"
