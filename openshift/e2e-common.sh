@@ -229,6 +229,14 @@ spec:
       logging.enable-request-log: "true"
 EOF
 
+  # TODO: Only one cluster enables internal-tls but it should be enabled by default when the feature is stable.
+  if [[ ${JOB_NAME} =~ "tls" ]]; then
+    oc patch knativeserving knative-serving \
+        -n "${SERVING_NAMESPACE}" \
+        --type merge --patch '{"spec": {"config": {"network": {"internal-encryption": "true"}}}}'
+    echo "internal-encryption is enabled"
+  fi
+
   # Wait for 4 pods to appear first
   timeout 600 '[[ $(oc get pods -n $SERVING_NAMESPACE --no-headers | wc -l) -lt 4 ]]' || return 1
   wait_until_pods_running $SERVING_NAMESPACE || return 1
