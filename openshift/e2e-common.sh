@@ -230,7 +230,7 @@ spec:
 EOF
 
   # TODO: Only one cluster enables internal-tls but it should be enabled by default when the feature is stable.
-  if [[ ${JOB_NAME} =~ "tls" ]]; then
+  if [[ ${ENABLE_INTERNAL_TLS} == "true" ]]; then
     oc patch knativeserving knative-serving \
         -n "${SERVING_NAMESPACE}" \
         --type merge --patch '{"spec": {"config": {"network": {"internal-encryption": "true"}}}}'
