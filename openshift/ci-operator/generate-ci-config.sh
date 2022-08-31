@@ -4,6 +4,7 @@ branch=${1-'knative-v0.6.0'}
 openshift=${2-'4.3'}
 promotion_disabled=${3-false}
 generate_continuous=${4-false}
+internal_tls_enabled=${5-false}
 
 if [[ "$branch" == "knative-next" ]]; then
   promotion_name="knative-nightly"
@@ -150,7 +151,9 @@ EOF
 
   print_single_test    "e2e-aws-ocp-${openshift//./}"             "make test-e2e"         "" "true" "generic-claim" ""
 
-  if [[ "$generate_continuous" == true ]]; then
+  if [[ "$internal_tls_enabled" == true ]]; then
+    print_single_test "e2e-aws-ocp-${openshift//./}-continuous"  "make test-e2e-tls"          "" "true" "generic-claim" "${cron}"
+  elif [[ "$generate_continuous" == true ]]; then
     print_single_test "e2e-aws-ocp-${openshift//./}-continuous"  "make test-e2e"          "" "true" "generic-claim" "${cron}"
   fi
 
