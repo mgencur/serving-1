@@ -236,8 +236,8 @@ EOF
         --type merge --patch '{"spec": {"config": {"network": {"internal-encryption": "true"}}}}'
     oc apply -f ./test/config/tls/cert-secret.yaml
     oc patch knativeserving knative-serving \
-            -n "${SERVING_NAMESPACE}" \
-            --type merge --patch '{"spec": {"config": {"kourier": {"cluster-cert-secret": "server-certs"}}}}'
+        -n "${SERVING_NAMESPACE}" \
+        --type merge --patch '{"spec": {"config": {"kourier": {"cluster-cert-secret": "server-certs"}}}}'
     echo "Restart activator to mount the certificates"
     kubectl delete pod -n ${SERVING_NAMESPACE} -l app=activator
     kubectl wait --timeout=60s --for=condition=Available deployment  -n ${SERVING_NAMESPACE} activator
