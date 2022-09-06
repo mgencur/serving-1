@@ -237,6 +237,11 @@ EOF
     oc patch knativeserving knative-serving \
         -n "${SERVING_NAMESPACE}" \
         --type merge --patch '{"spec": {"config": {"kourier": {"cluster-cert-secret": "server-certs"}}}}'
+    # Deploy certificates for testing TLS with cluster-local gateway
+    yq r --doc 1 ./test/config/tls/cert-secret.yaml | sed "s/knative-serving/${SERVING_INGRESS_NAMESPACE}/" | oc apply -f -
+    echo "Restart activator to mount the certificates"
+    oc delete pod -n ${SERVING_NAMESPACE} -l app=activator
+    oc wait --timeout=60s --for=condition=Available deployment  -n ${SERVING_NAMESPACE} activator
     echo "internal-encryption is enabled"
   fi
 
@@ -282,11 +287,8 @@ function prepare_knative_serving_tests_nightly {
   export INGRESS_CLASS=kourier.ingress.networking.knative.dev
 
   if [[ ${ENABLE_INTERNAL_TLS} == "true" ]]; then
-    # Deploy certificates for testing TLS with cluster-local gateway
-    sed "s/knative-serving/${SERVING_INGRESS_NAMESPACE}/" ./test/config/tls/cert-secret.yaml | oc apply -f -
-    echo "Restart activator to mount the certificates"
-    oc delete pod -n ${SERVING_NAMESPACE} -l app=activator
-    oc wait --timeout=60s --for=condition=Available deployment  -n ${SERVING_NAMESPACE} activator
+    # Deploy CA cert for testing TLS with cluster-local gateway
+    yq r --doc 0 ./test/config/tls/cert-secret.yaml | oc apply -f -
     # This needs to match the name of Secret in test/config/tls/cert-secret.yaml
     export CA_CERT=ca-cert
     # This needs to match $san from test/config/tls/generate.sh
