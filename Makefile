@@ -27,7 +27,7 @@ test-install:
 .PHONY: test-install
 
 test-e2e:
-	./openshift/e2e-tests.sh
+	ENABLE_INTERNAL_TLS="true" ./openshift/e2e-tests.sh
 .PHONY: test-e2e
 
 test-e2e-tls:
