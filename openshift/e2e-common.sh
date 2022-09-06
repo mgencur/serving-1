@@ -234,6 +234,13 @@ EOF
     oc patch knativeserving knative-serving \
         -n "${SERVING_NAMESPACE}" \
         --type merge --patch '{"spec": {"config": {"network": {"internal-encryption": "true"}}}}'
+    oc apply -f ./test/config/tls/cert-secret.yaml
+    oc patch knativeserving knative-serving \
+            -n "${SERVING_NAMESPACE}" \
+            --type merge --patch '{"spec": {"config": {"kourier": {"cluster-cert-secret": "server-certs"}}}}'
+    echo "Restart activator to mount the certificates"
+    kubectl delete pod -n ${SERVING_NAMESPACE} -l app=activator
+    kubectl wait --timeout=60s --for=condition=Available deployment  -n ${SERVING_NAMESPACE} activator
     echo "internal-encryption is enabled"
   fi
 
@@ -277,6 +284,13 @@ function prepare_knative_serving_tests_nightly {
   export GATEWAY_OVERRIDE=kourier
   export GATEWAY_NAMESPACE_OVERRIDE="$SERVING_INGRESS_NAMESPACE"
   export INGRESS_CLASS=kourier.ingress.networking.knative.dev
+
+  if [[ ${ENABLE_INTERNAL_TLS} == "true" ]]; then
+    # This needs to match the name of Secret in test/config/tls/cert-secret.yaml
+    export CA_CERT=ca-cert
+    # This needs to match $san from test/config/tls/generate.sh
+    export SERVER_NAME=knative.dev
+  fi
 }
 
 function run_e2e_tests(){
