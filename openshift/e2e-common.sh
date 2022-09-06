@@ -234,7 +234,7 @@ EOF
     oc patch knativeserving knative-serving \
         -n "${SERVING_NAMESPACE}" \
         --type merge --patch '{"spec": {"config": {"network": {"internal-encryption": "true"}}}}'
-    oc apply -f ./test/config/tls/cert-secret.yaml
+    sed "s/knative-serving/${SERVING_INGRESS_NAMESPACE}/" ./test/config/tls/cert-secret.yaml | oc apply -f -
     oc patch knativeserving knative-serving \
         -n "${SERVING_NAMESPACE}" \
         --type merge --patch '{"spec": {"config": {"kourier": {"cluster-cert-secret": "server-certs"}}}}'
