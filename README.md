@@ -1,3 +1,5 @@
+# This repository is deprecated. Use [`https://github.com/openshift-knative/serving`](https://github.com/openshift-knative/serving)
+
 # Openshift Knative Serving
 
 This repository holds Openshift's fork of
