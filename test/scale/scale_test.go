@@ -54,7 +54,7 @@ const (
 //   interesting burst of deployments, but low enough to complete in a reasonable window.
 func TestScaleToN(t *testing.T) {
 	// Run each of these variations.
-	tests := []int{10}
+	tests := []int{1}
 
 	for _, size := range tests {
 		t.Run(fmt.Sprint("scale-", size), func(t *testing.T) {
