@@ -37,6 +37,10 @@ import (
 	v1test "knative.dev/serving/test/v1"
 )
 
+const (
+	unprivilegedUserID = 65532
+)
+
 // Latencies is an interface for providing mechanisms for recording timings
 // for the parts of the scale test.
 type Latencies interface {
@@ -95,7 +99,7 @@ func ScaleToWithin(t *testing.T, scale int, duration time.Duration, latencies La
 
 			names := test.ResourceNames{
 				Service: test.ObjectNameForTest(t),
-				Image:   test.HelloWorld,
+				Image:   test.Volumes,
 			}
 
 			t.Cleanup(func() {
@@ -153,7 +157,14 @@ func ScaleToWithin(t *testing.T, scale int, duration time.Duration, latencies La
 							},
 						},
 					}),
-					rtesting.WithRevisionTimeoutSeconds(10))
+					rtesting.WithRevisionTimeoutSeconds(10),
+					rtesting.WithVolume("data", "/data", corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							// knative-pv-claim
+							ClaimName: "ceph-pv-claim",
+							ReadOnly:  false,
+						},
+					}))
 				if err != nil {
 					t.Error("CreateService() =", err)
 					return fmt.Errorf("CreateService() failed: %w", err)
@@ -188,7 +199,7 @@ func ScaleToWithin(t *testing.T, scale int, duration time.Duration, latencies La
 					clients.KubeClient,
 					t.Logf,
 					url,
-					spoof.MatchesAllOf(spoof.IsStatusOK, spoof.MatchesBody(test.HelloWorldText), abortOnTimeout(ctx)),
+					spoof.MatchesAllOf(spoof.IsStatusOK, spoof.MatchesBody(test.EmptyDirText), abortOnTimeout(ctx)),
 					"CheckEndpointToServeText",
 					test.ServingFlags.ResolvableDomain,
 					test.AddRootCAtoTransport(context.Background(), t.Logf, clients, test.ServingFlags.HTTPS))
