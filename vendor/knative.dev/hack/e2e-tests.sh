@@ -43,7 +43,7 @@ function go_test_e2e() {
   local go_test_args=()
   [[ ! " $*" == *" -tags="* ]] && go_test_args+=("-tags=e2e")
   [[ ! " $*" == *" -count="* ]] && go_test_args+=("-count=1")
-  [[ ! " $*" == *" -race"* ]] && go_test_args+=("-race")
+  #[[ ! " $*" == *" -race"* ]] && go_test_args+=("-race")
 
   # Remove empty args as `go test` will consider it as running tests for the current directory, which is not expected.
   for arg in "$@"; do
