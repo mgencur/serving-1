@@ -325,15 +325,14 @@ function run_e2e_tests(){
 
   if [ -n "$test_name" ]; then
     oc -n ${SYSTEM_NAMESPACE} patch knativeserving/knative-serving --type=merge --patch='{"spec": {"config": { "features": {"kubernetes.podspec-volumes-emptydir": "enabled"}}}}' || fail_test
-    go_test_e2e -tags=e2e -timeout=15m -parallel=1 \
-    ./test/e2e ./test/conformance/api/... ./test/conformance/runtime/... \
+    go_test_e2e -tags=e2e -timeout=15m \
+    ./test/scale \
     -run "^(${test_name})$" \
     --kubeconfig "$KUBECONFIG" \
     --imagetemplate "$TEST_IMAGE_TEMPLATE" \
     --enable-alpha \
     --enable-beta \
     --customdomain=$subdomain \
-    --https \
     --skip-cleanup-on-fail \
     --resolvabledomain || failed=$?
     oc -n ${SYSTEM_NAMESPACE} patch knativeserving/knative-serving --type=merge --patch='{"spec": {"config": { "features": {"kubernetes.podspec-volumes-emptydir": "disabled"}}}}' || fail_test
