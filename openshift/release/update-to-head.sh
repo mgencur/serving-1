@@ -4,7 +4,7 @@
 # Usage: update-to-head.sh
 
 set -e
-REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+REPO_NAME="serving"
 REPO_OWNER_NAME="openshift-knative"
 REPO_BRANCH="release-next"
 REPO_BRANCH_CI="${REPO_BRANCH}-ci"
