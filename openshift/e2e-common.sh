@@ -114,7 +114,7 @@ function update_csv(){
   local CSV="olm-catalog/serverless-operator/manifests/serverless-operator.clusterserviceversion.yaml"
 
   # release-next branch keeps updating the latest manifest in knative-serving-ci.yaml for serving resources.
-  # see: https://github.com/openshift/knative-serving/blob/release-next/openshift/release/knative-serving-ci.yaml
+  # see: https://github.com/openshift-knative/serving/blob/release-next/openshift/release/knative-serving-ci.yaml
   # So mount the manifest and use it by KO_DATA_PATH env value.
 
   cat << EOF | yq write --inplace --script - $CSV || return $?
