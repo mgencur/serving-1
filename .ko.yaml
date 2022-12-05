@@ -1,4 +1,5 @@
 # Use :nonroot base image for all containers
 defaultBaseImage: registry.access.redhat.com/ubi8/ubi-minimal:latest
 baseImageOverrides:
+  knative.dev/serving/test/test_images/runtime: gcr.io/distroless/static:nonroot
   knative.dev/serving/vendor/github.com/tsenart/vegeta/v12: ubuntu:latest
