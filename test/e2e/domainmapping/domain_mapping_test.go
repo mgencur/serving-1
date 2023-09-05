@@ -48,6 +48,14 @@ import (
 	v1test "knative.dev/serving/test/v1"
 )
 
+const (
+	// The cipher which is configured in config-network for test. See test/e2e-kind.sh.
+	allowedCipher = tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+
+	// The cipher which is NOT configured in config-network for test.
+	//disabledCipher = tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA
+)
+
 func TestBYOCertificate(t *testing.T) {
 	if !test.ServingFlags.EnableBetaFeatures {
 		t.Skip("Beta features not enabled")
@@ -149,7 +157,8 @@ func TestBYOCertificate(t *testing.T) {
 
 	var trustSelfSigned spoof.TransportOption = func(transport *http.Transport) *http.Transport {
 		transport.TLSClientConfig = &tls.Config{
-			RootCAs: rootCAs,
+			RootCAs:      rootCAs,
+			CipherSuites: []uint16{allowedCipher},
 		}
 		return transport
 	}
