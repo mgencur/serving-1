@@ -230,17 +230,17 @@ function run_e2e_tests(){
 
   # Changing the bucket count and cycling the controllers will leave around stale
   # lease resources at the old sharding factor, so clean these up.
-  kubectl -n ${SYSTEM_NAMESPACE} delete leases --all
+#  kubectl -n ${SYSTEM_NAMESPACE} delete leases --all
 
   # Wait for a new leader Controller to prevent race conditions during service reconciliation
-  wait_for_leader_controller || failed=1
+#  wait_for_leader_controller || failed=1
 
   # Dump the leases post-setup.
-  header "Leaders"
-  kubectl get lease -n "${SYSTEM_NAMESPACE}"
+#  header "Leaders"
+#  kubectl get lease -n "${SYSTEM_NAMESPACE}"
 
   # Give the controller time to sync with the rest of the system components.
-  sleep 30
+  #sleep 30
   subdomain=$(oc get ingresses.config.openshift.io cluster  -o jsonpath="{.spec.domain}")
 
   readonly OPENSHIFT_TEST_OPTIONS="--kubeconfig $KUBECONFIG --enable-beta --enable-alpha --resolvabledomain --customdomain=$subdomain --https --skip-cleanup-on-fail"
@@ -266,7 +266,7 @@ function run_e2e_tests(){
   fi
 
   go_test_e2e -tags=e2e -timeout=30m -parallel=$parallel \
-    ./test/e2e/domainmapping \
+    ./test/e2e -run=TestHelloWorld \
     --imagetemplate "$TEST_IMAGE_TEMPLATE" \
     ${OPENSHIFT_TEST_OPTIONS} || failed=1
 

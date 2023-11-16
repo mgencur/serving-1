@@ -44,6 +44,13 @@ const (
 
 	caSecretNamespace = "cert-manager"
 	caSecretName      = "ca-key-pair" // #nosec G101
+
+	// The cipher which is configured in config-network for test. See test/e2e-kind.sh.
+	allowedCipher = tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+
+	// The cipher which is NOT configured in config-network for test.
+	disabledCipher = tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA
+	// ALLOWED: ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-ECDSA-CHACHA20-POLY1305
 )
 
 // util.go provides shared utilities methods across knative serving test
@@ -86,7 +93,10 @@ func TLSClientConfig(ctx context.Context, logf logging.FormatLogger, clients *Cl
 	if !rootCAs.AppendCertsFromPEM(PemDataFromSecret(ctx, logf, clients, caSecretNamespace, caSecretName)) {
 		logf("Failed to add the certificate to the root CA")
 	}
-	return &tls.Config{RootCAs: rootCAs} // #nosec G402
+	return &tls.Config{
+		RootCAs:      rootCAs,
+		CipherSuites: []uint16{disabledCipher},
+	} // #nosec G402
 }
 
 // PemDataFromSecret gets pem data from secret.
