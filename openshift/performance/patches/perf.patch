@@ -46,7 +46,7 @@ index 32b94bfb1..ce192d43d 100644
 -RUN make install test-install
 +RUN make install test-install perf-install
 
- FROM openshift/origin-base
+ FROM registry.access.redhat.com/ubi8/ubi-minimal
  USER 65532
 diff --git a/openshift/ci-operator/Dockerfile_with_kodata.in b/openshift/ci-operator/Dockerfile_with_kodata.in
 index 00de72095..0422ce541 100644
@@ -59,7 +59,7 @@ index 00de72095..0422ce541 100644
 -RUN make install test-install
 +RUN make install test-install perf-install
 
- FROM openshift/origin-base
+ FROM registry.access.redhat.com/ubi8/ubi-minimal
  USER 65532
 diff --git a/test/performance/README.md b/test/performance/README.md
 index a4906039a..f17f7cffc 100644
