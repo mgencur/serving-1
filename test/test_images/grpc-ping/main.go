@@ -94,7 +94,9 @@ func main() {
 	}
 
 	g := grpc.NewServer()
-	grpc_health_v1.RegisterHealthServer(g, health.NewServer())
+	hs := health.NewServer()
+	hs.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+	grpc_health_v1.RegisterHealthServer(g, hs)
 	ping.RegisterPingServiceServer(g, &server{})
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
