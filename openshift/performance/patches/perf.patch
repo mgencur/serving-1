@@ -40,7 +40,7 @@ index 1c31865cc..7bd47161b 100644
 --- a/openshift/ci-operator/Dockerfile.in
 +++ b/openshift/ci-operator/Dockerfile.in
 @@ -2,7 +2,7 @@
- FROM registry.ci.openshift.org/openshift/release:golang-1.21 as builder
+ FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-builder-multi-openshift-4.16 as builder
 
  COPY . .
 -RUN make install test-install
@@ -53,7 +53,7 @@ index 9d84e5ecc..572d91c25 100644
 --- a/openshift/ci-operator/Dockerfile_with_kodata.in
 +++ b/openshift/ci-operator/Dockerfile_with_kodata.in
 @@ -2,7 +2,7 @@
- FROM registry.ci.openshift.org/openshift/release:golang-1.21 as builder
+ FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-builder-multi-openshift-4.16 as builder
 
  COPY . .
 -RUN make install test-install
