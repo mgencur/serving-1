@@ -154,7 +154,7 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		Sidecars: []string{
 			test.Readiness,
 			test.GRPCPing,
-			test.Readiness,
+			test.SidecarContainer,
 		},
 	}
 
@@ -209,7 +209,7 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 					},
 				},
 			},
-		},{ // Sidecar with TCPSocket readiness and liveness probes.
+		},*/{ // Sidecar with TCPSocket readiness and liveness probes.
 			Image: pkgTest.ImagePath(names.Sidecars[2]),
 			Env: []corev1.EnvVar{
 				{Name: "HEALTHCHECK_PORT", Value: "8882"},
@@ -228,7 +228,7 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 					},
 				},
 			},
-		},*/
+		},
 	}
 
 	test.EnsureTearDown(t, clients, &names)
