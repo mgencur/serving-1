@@ -35,7 +35,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	flag.Parse()
 	var port int
-	if env := os.Getenv("PORT"); env != "" {
+	if env := os.Getenv("HEALTHCHECK_PORT"); env != "" {
 		port, _ = strconv.Atoi(env)
 	}
 	log.Printf("sidecar container started on port %d", port)
