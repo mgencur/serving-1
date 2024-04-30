@@ -141,8 +141,6 @@ func TestMultiContainerReadiness(t *testing.T) {
 }
 
 // TestMultiContainerReadinessDifferentProtocols check that sidecars can use different probe types.
-// The user container forwards a request to the first sidecar which should respond. The other containers
-// use other types of probes in order to complement the various types that are available.
 func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 	t.Parallel()
 
@@ -154,8 +152,7 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		Sidecars: []string{
 			test.Readiness,
 			test.Readiness,
-			//test.GRPCPing,
-			//test.SidecarContainer,
+			test.GRPCPing,
 		},
 	}
 
@@ -163,13 +160,12 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		{
 			Image: pkgTest.ImagePath(names.Image),
 			Ports: []corev1.ContainerPort{{
-				//Name:          "h2c",
 				ContainerPort: 8080,
 			}},
 		}, { // Sidecar with TCPSocket readiness and liveness probes.
 			Image: pkgTest.ImagePath(names.Sidecars[0]),
 			Env: []corev1.EnvVar{
-				{Name: "MAIN_PORT", Value: "8881"},
+				{Name: "PORT", Value: "8881"},
 			},
 			ReadinessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
@@ -188,7 +184,7 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		}, { // Sidecar with HTTPGet readiness and Exec liveness probes.
 			Image: pkgTest.ImagePath(names.Sidecars[1]),
 			Env: []corev1.EnvVar{
-				{Name: "MAIN_PORT", Value: "8882"},
+				{Name: "PORT", Value: "8882"},
 			},
 			ReadinessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
@@ -202,6 +198,25 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 				ProbeHandler: corev1.ProbeHandler{
 					Exec: &corev1.ExecAction{
 						Command: []string{"/ko-app/readiness", "probe"},
+					},
+				},
+			},
+		}, { // Sidecar with GRPC readiness and liveness probes.
+			Image: pkgTest.ImagePath(names.Sidecars[2]),
+			Env: []corev1.EnvVar{
+				{Name: "PORT", Value: "8883"},
+			},
+			ReadinessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					GRPC: &corev1.GRPCAction{
+						Port: 8883,
+					},
+				},
+			},
+			LivenessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					GRPC: &corev1.GRPCAction{
+						Port: 8883,
 					},
 				},
 			},
@@ -230,6 +245,6 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		test.ServingFlags.ResolvableDomain,
 		test.AddRootCAtoTransport(context.Background(), t.Logf, clients, test.ServingFlags.HTTPS),
 	); err != nil {
-		t.Fatalf("The endpoint %s for Route %s didn't serve the expected text %q: %v", url, names.Route, test.MultiContainerResponse, err)
+		t.Fatalf("The endpoint %s for Route %s didn't serve the expected text %q: %v", url, names.Route, test.HelloWorldText, err)
 	}
 }

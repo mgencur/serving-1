@@ -22,7 +22,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
@@ -30,7 +29,7 @@ import (
 )
 
 const (
-	defaultPort = 8080
+	defaultPort = "8080"
 )
 
 var (
@@ -80,13 +79,9 @@ func main() {
 	probeServer := http.NewServeMux()
 	probeServer.HandleFunc("/", handleHealthz)
 
-	if healthcheckPortEnv := os.Getenv("HEALTHCHECK_PORT"); healthcheckPortEnv != "" {
-		healthcheckPort, err := strconv.Atoi(healthcheckPortEnv)
-		if err != nil {
-			log.Fatalf("Unable to parse port: %v", err)
-		}
+	if healthcheckPort := os.Getenv("HEALTHCHECK_PORT"); healthcheckPort != "" {
 		go func() {
-			http.ListenAndServe(":"+strconv.Itoa(healthcheckPort), probeServer)
+			http.ListenAndServe(":"+healthcheckPort, probeServer)
 		}()
 	} else {
 		mainServer.HandleFunc("/healthz", handleHealthz)
@@ -94,11 +89,11 @@ func main() {
 
 	mainServer.HandleFunc("/query", handleQuery)
 
-	http.ListenAndServe(":"+strconv.Itoa(getPort()), mainServer)
+	http.ListenAndServe(":"+getPort(), mainServer)
 }
 
 func execProbeMain() {
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", getPort()))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/healthz", getPort()))
 	if err != nil {
 		log.Fatal("Failed to probe: ", err)
 	}
@@ -138,15 +133,13 @@ func handleMain(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, test.HelloWorldText)
 }
 
-func getPort() int {
-	var err error
-	port := defaultPort
-	// "PORT" is a reserved env variable. Need to use a different one.
-	if env := os.Getenv("MAIN_PORT"); env != "" {
-		port, err = strconv.Atoi(env)
-		if err != nil {
-			log.Fatal(err)
-		}
+func getPort() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return port
 	}
-	return port
+	// "PORT" is a reserved env variable. For sidecar containers Need to use a different one.
+	//if port := os.Getenv("MAIN_PORT"); port != "" {
+	//	return port
+	//}
+	return defaultPort
 }
