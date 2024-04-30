@@ -29,6 +29,10 @@ import (
 	"knative.dev/serving/test"
 )
 
+const (
+	defaultPort = 8080
+)
+
 var (
 	healthy bool
 	mu      sync.Mutex
@@ -76,8 +80,11 @@ func main() {
 	probeServer := http.NewServeMux()
 	probeServer.HandleFunc("/", handleHealthz)
 
-	if env := os.Getenv("HEALTHCHECK_PORT"); env != "" {
-		healthcheckPort, _ := strconv.Atoi(env)
+	if healthcheckPortEnv := os.Getenv("HEALTHCHECK_PORT"); healthcheckPortEnv != "" {
+		healthcheckPort, err := strconv.Atoi(healthcheckPortEnv)
+		if err != nil {
+			log.Fatalf("Unable to parse port: %v", err)
+		}
 		go func() {
 			http.ListenAndServe(":"+strconv.Itoa(healthcheckPort), probeServer)
 		}()
@@ -86,11 +93,12 @@ func main() {
 	}
 
 	mainServer.HandleFunc("/query", handleQuery)
-	http.ListenAndServe(":8080", mainServer)
+
+	http.ListenAndServe(":"+strconv.Itoa(getPort()), mainServer)
 }
 
 func execProbeMain() {
-	resp, err := http.Get(os.ExpandEnv("http://localhost:$PORT/healthz"))
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", getPort()))
 	if err != nil {
 		log.Fatal("Failed to probe: ", err)
 	}
@@ -128,4 +136,17 @@ func handleQuery(w http.ResponseWriter, r *http.Request) {
 
 func handleMain(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, test.HelloWorldText)
+}
+
+func getPort() int {
+	var err error
+	port := defaultPort
+	// "PORT" is a reserved env variable. Need to use a different one.
+	if env := os.Getenv("MAIN_PORT"); env != "" {
+		port, err = strconv.Atoi(env)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	return port
 }

@@ -150,11 +150,12 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 
 	names := test.ResourceNames{
 		Service: test.ObjectNameForTest(t),
-		Image:   test.ServingContainer,
+		Image:   test.Readiness,
 		Sidecars: []string{
 			test.Readiness,
-			test.GRPCPing,
-			test.SidecarContainer,
+			test.Readiness,
+			//test.GRPCPing,
+			//test.SidecarContainer,
 		},
 	}
 
@@ -162,69 +163,45 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		{
 			Image: pkgTest.ImagePath(names.Image),
 			Ports: []corev1.ContainerPort{{
-				ContainerPort: 8881,
+				//Name:          "h2c",
+				ContainerPort: 8080,
 			}},
+		}, { // Sidecar with TCPSocket readiness and liveness probes.
+			Image: pkgTest.ImagePath(names.Sidecars[0]),
 			Env: []corev1.EnvVar{
-				{Name: "HEALTHCHECK_PORT", Value: "8881"},
-				// A port in the next container to forward requests to.
-				{Name: "FORWARD_PORT", Value: "8080"},
+				{Name: "MAIN_PORT", Value: "8881"},
 			},
 			ReadinessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
-					HTTPGet: &corev1.HTTPGetAction{
-						Path: "/",
+					TCPSocket: &corev1.TCPSocketAction{
 						Port: intstr.FromInt32(8881),
-					}},
+					},
+				},
 			},
-		}, { // Sidecar with HTTPGet readiness HTTPGet and Exec liveness.
-			Image: pkgTest.ImagePath(names.Sidecars[0]),
+			LivenessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					TCPSocket: &corev1.TCPSocketAction{
+						Port: intstr.FromInt32(8881),
+					},
+				},
+			},
+		}, { // Sidecar with HTTPGet readiness and Exec liveness probes.
+			Image: pkgTest.ImagePath(names.Sidecars[1]),
+			Env: []corev1.EnvVar{
+				{Name: "MAIN_PORT", Value: "8882"},
+			},
 			ReadinessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
 					HTTPGet: &corev1.HTTPGetAction{
 						Path: "/healthz",
-						Port: intstr.FromInt32(8080),
-					}},
+						Port: intstr.FromInt32(8882),
+					},
+				},
 			},
 			LivenessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
 					Exec: &corev1.ExecAction{
 						Command: []string{"/ko-app/readiness", "probe"},
-					},
-				},
-			},
-		}, /*{ // Sidecar with GRPC readiness and liveness probes.
-			Image: pkgTest.ImagePath(names.Sidecars[1]),
-			// TODO add h2c ?
-			ReadinessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					GRPC: &corev1.GRPCAction{
-						Port: v1.DefaultUserPort,
-					},
-				},
-			},
-			LivenessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					GRPC: &corev1.GRPCAction{
-						Port: v1.DefaultUserPort,
-					},
-				},
-			},
-		},*/{ // Sidecar with TCPSocket readiness and liveness probes.
-			Image: pkgTest.ImagePath(names.Sidecars[2]),
-			Env: []corev1.EnvVar{
-				{Name: "HEALTHCHECK_PORT", Value: "8882"},
-			},
-			ReadinessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					TCPSocket: &corev1.TCPSocketAction{
-						Port: intstr.FromInt32(8882),
-					},
-				},
-			},
-			LivenessProbe: &corev1.Probe{
-				ProbeHandler: corev1.ProbeHandler{
-					TCPSocket: &corev1.TCPSocketAction{
-						Port: intstr.FromInt32(8882),
 					},
 				},
 			},

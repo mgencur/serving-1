@@ -34,7 +34,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	var port int
+	port := 8080
 	if env := os.Getenv("HEALTHCHECK_PORT"); env != "" {
 		port, _ = strconv.Atoi(env)
 	}
