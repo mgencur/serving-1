@@ -44,7 +44,7 @@ func TestMultiContainerReadiness(t *testing.T) {
 		Sidecars: []string{
 			test.ServingContainer,
 			test.ServingContainer,
-			test.SidecarContainer,
+			test.Readiness,
 		},
 	}
 
@@ -95,19 +95,22 @@ func TestMultiContainerReadiness(t *testing.T) {
 		}, { // Sidecar with both readiness and liveness probes.
 			Image: pkgTest.ImagePath(names.Sidecars[2]),
 			Env: []corev1.EnvVar{
-				{Name: "HEALTHCHECK_PORT", Value: "8884"},
+				{Name: "PORT", Value: "8884"},
+				// Delay readiness. The Knative service should be ready only after all containers
+				// are ready and the subsequent request should pass.
+				{Name: "READY_DELAY", Value: "10s"},
 			},
 			ReadinessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
 					HTTPGet: &corev1.HTTPGetAction{
-						Path: "/",
+						Path: "/healthz",
 						Port: intstr.FromInt32(8884),
 					}},
 			},
 			LivenessProbe: &corev1.Probe{
 				ProbeHandler: corev1.ProbeHandler{
 					HTTPGet: &corev1.HTTPGetAction{
-						Path: "/",
+						Path: "/healthz",
 						Port: intstr.FromInt32(8884),
 					}},
 			},
@@ -131,12 +134,12 @@ func TestMultiContainerReadiness(t *testing.T) {
 		clients.KubeClient,
 		t.Logf,
 		url,
-		spoof.MatchesAllOf(spoof.IsStatusOK, spoof.MatchesBody(test.MultiContainerResponse)),
+		spoof.MatchesAllOf(spoof.IsStatusOK, spoof.MatchesBody(test.HelloWorldText)),
 		"MulticontainerServesExpectedText",
 		test.ServingFlags.ResolvableDomain,
 		test.AddRootCAtoTransport(context.Background(), t.Logf, clients, test.ServingFlags.HTTPS),
 	); err != nil {
-		t.Fatalf("The endpoint %s for Route %s didn't serve the expected text %q: %v", url, names.Route, test.MultiContainerResponse, err)
+		t.Fatalf("The endpoint %s for Route %s didn't serve the expected text %q: %v", url, names.Route, test.HelloWorldText, err)
 	}
 }
 

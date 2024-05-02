@@ -112,6 +112,28 @@ func handleStartFailing(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
+	handleCommon(w, r)
+}
+
+func handleQuery(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("probe") == "ok" {
+		handleCommon(w, r)
+	}
+	http.Error(w, "no query", http.StatusInternalServerError)
+}
+
+func handleMain(w http.ResponseWriter, r *http.Request) {
+	handleCommon(w, r)
+}
+
+func getPort() string {
+	if port := os.Getenv("PORT"); port != "" {
+		return port
+	}
+	return defaultPort
+}
+
+func handleCommon(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -120,22 +142,4 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Fprint(w, test.HelloWorldText)
-}
-
-func handleQuery(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("probe") == "ok" {
-		fmt.Fprint(w, test.HelloWorldText)
-	}
-	http.Error(w, "no query", http.StatusInternalServerError)
-}
-
-func handleMain(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, test.HelloWorldText)
-}
-
-func getPort() string {
-	if port := os.Getenv("PORT"); port != "" {
-		return port
-	}
-	return defaultPort
 }
