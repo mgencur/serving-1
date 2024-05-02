@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
 
 	"knative.dev/serving/test"
 )
@@ -34,10 +32,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
-	port := 8080
-	if env := os.Getenv("HEALTHCHECK_PORT"); env != "" {
-		port, _ = strconv.Atoi(env)
-	}
-	log.Printf("sidecar container started on port %d", port)
-	test.ListenAndServeGracefully(":"+strconv.Itoa(port), handler)
+	log.Print("sidecar container started")
+	test.ListenAndServeGracefully(":8882", handler)
 }
