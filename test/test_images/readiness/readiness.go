@@ -137,9 +137,5 @@ func getPort() string {
 	if port := os.Getenv("PORT"); port != "" {
 		return port
 	}
-	// "PORT" is a reserved env variable. For sidecar containers Need to use a different one.
-	//if port := os.Getenv("MAIN_PORT"); port != "" {
-	//	return port
-	//}
 	return defaultPort
 }
