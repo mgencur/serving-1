@@ -30,8 +30,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	pkgTest "knative.dev/pkg/test"
 	"knative.dev/pkg/test/spoof"
+	"knative.dev/serving/pkg/apis/autoscaling"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
 	"knative.dev/serving/pkg/resources"
+	rtesting "knative.dev/serving/pkg/testing/v1"
 	"knative.dev/serving/test"
 	"knative.dev/serving/test/e2e"
 	v1test "knative.dev/serving/test/v1"
@@ -300,7 +302,10 @@ func TestMultiContainerProbeStartFailing(t *testing.T) {
 
 	objects, err := v1test.CreateServiceReady(t, clients, &names, func(svc *v1.Service) {
 		svc.Spec.Template.Spec.Containers = containers
-	})
+	}, rtesting.WithConfigAnnotations(map[string]string{
+		// Make sure we don't scale to zero during the test.
+		autoscaling.MinScaleAnnotationKey: "1",
+	}))
 	if err != nil {
 		t.Fatalf("Failed to create initial Service: %v: %v", names.Service, err)
 	}
