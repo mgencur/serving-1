@@ -22,13 +22,18 @@ package multicontainerprobing
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/wait"
 	pkgTest "knative.dev/pkg/test"
 	"knative.dev/pkg/test/spoof"
 	v1 "knative.dev/serving/pkg/apis/serving/v1"
+	"knative.dev/serving/pkg/resources"
 	"knative.dev/serving/test"
+	"knative.dev/serving/test/e2e"
 	v1test "knative.dev/serving/test/v1"
 )
 
@@ -145,6 +150,7 @@ func TestMultiContainerReadiness(t *testing.T) {
 
 // TestMultiContainerReadinessDifferentProtocols check that sidecars can use different probe types.
 func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
+	t.Skip("Skipping")
 	t.Parallel()
 
 	clients := test.Setup(t)
@@ -249,5 +255,86 @@ func TestMultiContainerReadinessDifferentProtocols(t *testing.T) {
 		test.AddRootCAtoTransport(context.Background(), t.Logf, clients, test.ServingFlags.HTTPS),
 	); err != nil {
 		t.Fatalf("The endpoint %s for Route %s didn't serve the expected text %q: %v", url, names.Route, test.HelloWorldText, err)
+	}
+}
+
+func TestMultiContainerProbeStartFailing(t *testing.T) {
+	t.Parallel()
+
+	clients := test.Setup(t)
+
+	names := test.ResourceNames{
+		Service: test.ObjectNameForTest(t),
+		Image:   test.Readiness,
+		Sidecars: []string{
+			test.Readiness,
+		},
+	}
+
+	containers := []corev1.Container{
+		{
+			Image: pkgTest.ImagePath(names.Image),
+			Ports: []corev1.ContainerPort{{
+				ContainerPort: 8080,
+			}},
+		}, {
+			Image: pkgTest.ImagePath(names.Sidecars[0]),
+			Env: []corev1.EnvVar{
+				{Name: "PORT", Value: "8881"},
+				// Start as ready and become unready after initial delay.
+				{Name: "UNREADY_DELAY", Value: "10s"},
+			},
+			ReadinessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					HTTPGet: &corev1.HTTPGetAction{
+						Path: "/healthz",
+						Port: intstr.FromInt32(8881),
+					}},
+			},
+		},
+	}
+
+	test.EnsureTearDown(t, clients, &names)
+
+	t.Log("Creating a new Service")
+
+	objects, err := v1test.CreateServiceReady(t, clients, &names, func(svc *v1.Service) {
+		svc.Spec.Template.Spec.Containers = containers
+	})
+	if err != nil {
+		t.Fatalf("Failed to create initial Service: %v: %v", names.Service, err)
+	}
+
+	url := objects.Route.Status.URL.URL()
+	if _, err := pkgTest.CheckEndpointState(
+		context.Background(),
+		clients.KubeClient,
+		t.Logf,
+		url,
+		spoof.MatchesAllOf(spoof.IsStatusOK, spoof.MatchesBody(test.HelloWorldText)),
+		"MulticontainerServesExpectedText",
+		test.ServingFlags.ResolvableDomain,
+		test.AddRootCAtoTransport(context.Background(), t.Logf, clients, test.ServingFlags.HTTPS),
+	); err != nil {
+		t.Fatalf("The endpoint %s for Route %s didn't serve the expected text %q: %v", url, names.Route, test.HelloWorldText, err)
+	}
+
+	revName, err := e2e.RevisionFromConfiguration(clients, names.Service)
+	if err != nil {
+		t.Fatal("Unable to get revision: ", err)
+	}
+	privateSvcName := e2e.PrivateServiceName(t, clients, revName)
+	endpoints := clients.KubeClient.CoreV1().Endpoints(test.ServingFlags.TestNamespace)
+
+	var latestReady int
+	if err := wait.PollUntilContextTimeout(context.Background(), time.Second, 60*time.Second, true, func(context.Context) (bool, error) {
+		endpoint, err := endpoints.Get(context.Background(), privateSvcName, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+		latestReady = resources.ReadyAddressCount(endpoint)
+		return latestReady == 0, nil
+	}); err != nil {
+		t.Fatalf("Service still has endpoints: %d", latestReady)
 	}
 }

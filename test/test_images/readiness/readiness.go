@@ -63,6 +63,20 @@ func main() {
 		}()
 	}
 
+	if env := os.Getenv("UNREADY_DELAY"); env != "" {
+		delay, err := time.ParseDuration(env)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		go func() {
+			time.Sleep(delay)
+			mu.Lock()
+			healthy = false
+			mu.Unlock()
+		}()
+	}
+
 	if env := os.Getenv("LISTEN_DELAY"); env != "" {
 		delay, err := time.ParseDuration(env)
 		if err != nil {
