@@ -3,6 +3,10 @@ name: e2e
 on:
   pull_request:
     branches: [ 'main', 'release-*' ]
+  push:
+    branches:
+      - 'bring_back_kourier_tls_f'
+  workflow_dispatch: # Manual workflow trigger
 
 defaults:
   run:
